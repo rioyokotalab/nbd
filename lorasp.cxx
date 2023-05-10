@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) {
   int64_t Nleaf = (int64_t)1 << levels;
   int64_t ncells = Nleaf + Nleaf - 1;
   
-  Laplace3D eval(-1.e-6);
+  Laplace3D eval(1.e-6);
   //Yukawa3D eval(1.e-6, 1.);
   //Gaussian eval(1);
   
@@ -106,7 +106,7 @@ int main(int argc, char* argv[]) {
   double cerr = 0.;
   if (Nbody < 20000) {
     int64_t body_local[2] = { cell[gbegin].Body[0], cell[gbegin + llen - 1].Body[1] };
-    std::vector<double> X3(lenX);
+    std::vector<double> X3(lenX, 0);
     mat_vec_reference(eval, body_local[0], body_local[1], &X3[0], Nbody, body, Xbody);
     loadX(X2, basis[levels].dimN, &X3[0], body_local[0], llen, &cell[gbegin]);
 
