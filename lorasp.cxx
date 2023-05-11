@@ -18,7 +18,7 @@ int main(int argc, char* argv[]) {
   double theta = argc > 2 ? atof(argv[2]) : 1e0;
   int64_t leaf_size = argc > 3 ? atol(argv[3]) : 256;
   double epi = argc > 4 ? atof(argv[4]) : 1e-10;
-  int64_t rank_max = argc > 5 ? atol(argv[5]) : 100;
+  int64_t rank_max = argc > 5 ? atol(argv[5]) : 200;
   int64_t sp_pts = argc > 6 ? atol(argv[6]) : 2000;
   const char* fname = argc > 7 ? argv[7] : NULL;
 
@@ -129,8 +129,9 @@ int main(int argc, char* argv[]) {
   factor_comm_time = timer.get_comm_timing();
 
   Profile profile;
-  for (int64_t i = 0; i <= levels; i++)
+  for (int64_t i = 1; i <= levels; i++)
     profile.record_factor(basis[i].dimR, basis[i].dimN, nodes[i].params.L_nnz, nodes[i].params.L_diag, nodes[i].params.L_rows);
+  profile.record_factor(basis[0].dimR, basis[0].dimN, 1, 1, 1);
   
   int64_t factor_flops[3], mem_A[3];
   profile.get_profile(factor_flops, mem_A);

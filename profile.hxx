@@ -14,7 +14,7 @@ struct Profile {
   int64_t bytes_vector = 0;
 
   void record_factor(int64_t dimr, int64_t dimn, int64_t nnz, int64_t ndiag, int64_t nrows) {
-    if (dimr == 0 && nnz == 1) {
+    if (nnz == 1 && ndiag == 1 && nrows == 1) {
       potrf_flops += + dimn * dimn * dimn / 3;
       bytes_matrix += dimn * dimn * sizeof(double);
       bytes_vector += dimn * sizeof(double);
