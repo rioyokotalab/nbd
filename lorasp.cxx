@@ -27,9 +27,9 @@ int main(int argc, char* argv[]) {
   int64_t Nleaf = (int64_t)1 << levels;
   int64_t ncells = Nleaf + Nleaf - 1;
   
-  Laplace3D eval(1.e-6);
+  Laplace3D eval(1.e-3);
   //Yukawa3D eval(1.e-6, 1.);
-  //Gaussian eval(1);
+  //Gaussian eval(0.2);
   
   double* body = (double*)malloc(sizeof(double) * Nbody * 3);
   double* Xbody = (double*)malloc(sizeof(double) * Nbody);
@@ -44,7 +44,7 @@ int main(int argc, char* argv[]) {
   if (fname == NULL) {
     mesh_unit_sphere(body, Nbody);
     //mesh_unit_cube(body, Nbody);
-    //uniform_unit_cube(body, Nbody, 2);
+    //uniform_unit_cube(body, Nbody, 1);
     double c[3] = { 0, 0, 0 };
     double r[3] = { 1, 1, 1 };
     magnify_reloc(body, Nbody, c, c, r, sqrt(Nbody));

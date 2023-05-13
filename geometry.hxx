@@ -161,18 +161,9 @@ void body_neutral_charge(double X[], int64_t nbodies, double cmax, unsigned int 
   if (seed > 0)
     srand(seed);
 
-  double avg = 0.;
   double cmax2 = cmax * 2;
-  for (int64_t i = 0; i < nbodies; i++) {
-    double c = ((double)rand() / RAND_MAX) * cmax2 - cmax;
-    X[i] = c;
-    avg = avg + c;
-  }
-  avg = avg / nbodies;
-
-  if (avg != 0.)
-    for (int64_t i = 0; i < nbodies; i++)
-      X[i] = X[i] - avg;
+  for (int64_t i = 0; i < nbodies; i++)
+    X[i] = ((double)rand() / RAND_MAX) * cmax2 - cmax;
 }
 
 void read_sorted_bodies(int64_t* nbodies, int64_t lbuckets, double* bodies, int64_t buckets[], const char* fname) {
