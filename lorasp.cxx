@@ -18,7 +18,7 @@ int main(int argc, char* argv[]) {
   double theta = argc > 2 ? atof(argv[2]) : 1e0;
   int64_t leaf_size = argc > 3 ? atol(argv[3]) : 256;
   double epi = argc > 4 ? atof(argv[4]) : 1e-10;
-  int64_t rank_max = argc > 5 ? atol(argv[5]) : 200;
+  int64_t rank_max = argc > 5 ? atol(argv[5]) : 100;
   int64_t sp_pts = argc > 6 ? atol(argv[6]) : 2000;
   const char* fname = argc > 7 ? argv[7] : NULL;
 
@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) {
   int64_t Nleaf = (int64_t)1 << levels;
   int64_t ncells = Nleaf + Nleaf - 1;
   
-  Laplace3D eval(1.e-3);
+  Laplace3D eval(1.e-6);
   //Yukawa3D eval(1.e-6, 1.);
   //Gaussian eval(0.2);
   
@@ -133,9 +133,9 @@ int main(int argc, char* argv[]) {
     profile.record_factor(basis[i].dimR, basis[i].dimN, nodes[i].params.L_nnz, nodes[i].params.L_diag, nodes[i].params.L_rows);
   profile.record_factor(basis[0].dimR, basis[0].dimN, 1, 1, 1);
   
-  int64_t factor_flops[3], mem_A[3];
+  int64_t factor_flops[4], mem_A[3];
   profile.get_profile(factor_flops, mem_A);
-  MPI_Allreduce(MPI_IN_PLACE, factor_flops, 3, MPI_INT64_T, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(MPI_IN_PLACE, factor_flops, 4, MPI_INT64_T, MPI_SUM, MPI_COMM_WORLD);
   
   int64_t sum_flops = factor_flops[0] + factor_flops[1] + factor_flops[2];
   double percent[3];
@@ -179,6 +179,7 @@ int main(int argc, char* argv[]) {
       "Solution: %lf s. COMM: %lf s.\n"
       "Factorization GFLOPS: %lf GFLOPS/s.\n"
       "GEMM: %lf%%, POTRF: %lf%%, TRSM: %lf%%\n"
+      "Pre-fac vs. Actual: %lf%%, %lf%% \n"
       "Matrix Memory: %lf GiB.\n"
       "Basis Memory: %lf GiB.\n"
       "Vector Memory: %lf GiB.\n"
@@ -187,6 +188,7 @@ int main(int argc, char* argv[]) {
       (int)Nbody, (int)(Nbody / Nleaf), theta, 3, (int)mpi_size, omp_get_max_threads(),
       construct_time, construct_comm_time, matvec_time, matvec_comm_time, factor_time, factor_comm_time, 
       solve_time, solve_comm_time, (double)sum_flops * 1.e-9 / factor_time, percent[0], percent[1], percent[2], 
+      (double)100 * factor_flops[3] / (sum_flops + factor_flops[3]), (double)100 * sum_flops / (sum_flops + factor_flops[3]),
       (double)mem_A[0] * 1.e-9, (double)mem_A[1] * 1.e-9, (double)mem_A[2] * 1.e-9, cerr, err, prog_time);
 
   for (int64_t i = 0; i <= levels; i++) {
