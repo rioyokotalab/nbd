@@ -1,9 +1,9 @@
-#include "nbd.hxx"
+#include <nbd.hpp>
 
-#include "stdio.h"
-#include "stdlib.h"
-#include "math.h"
-#include "string.h"
+#include <cstdio>
+#include <cstdlib>
+#include <cmath>
+#include <cstring>
 
 #include <algorithm>
 #include <array>
@@ -180,38 +180,31 @@ void getList(char NoF, int64_t* len, int64_t rels[], int64_t ncells, const struc
 void traverse(char NoF, CSR* rels, int64_t ncells, const struct Cell* cells, double theta) {
   rels->M = ncells;
   rels->N = ncells;
-  int64_t* rel_arr = (int64_t*)malloc(sizeof(int64_t) * (ncells * ncells + ncells + 1));
+  std::vector<int64_t> rel_arr(ncells * ncells);
   int64_t len = 0;
-  getList(NoF, &len, &rel_arr[ncells + 1], ncells, cells, 0, 0, theta);
+  getList(NoF, &len, &rel_arr[0], ncells, cells, 0, 0, theta);
+  std::sort(rel_arr.begin(), rel_arr.begin() + len);
 
-  if (len < ncells * ncells)
-    rel_arr = (int64_t*)realloc(rel_arr, sizeof(int64_t) * (len + ncells + 1));
-  int64_t* rel_rows = &rel_arr[ncells + 1];
-  std::sort(rel_rows, rel_rows + len);
-  rels->RowIndex = rel_arr;
-  rels->ColIndex = rel_rows;
+  rels->RowIndex.resize(ncells + 1);
+  rels->ColIndex.resize(len);
 
   int64_t loc = -1;
   for (int64_t i = 0; i < len; i++) {
-    int64_t r = rel_rows[i];
+    int64_t r = rel_arr[i];
     int64_t x = r / ncells;
     int64_t y = r - x * ncells;
-    rel_rows[i] = y;
+    rels->ColIndex[i] = y;
     while (x > loc)
-      rel_arr[++loc] = i;
+      rels->RowIndex[++loc] = i;
   }
   for (int64_t i = loc + 1; i <= ncells; i++)
-    rel_arr[i] = len;
-}
-
-void csc_free(CSR* csc) {
-  free(csc->RowIndex);
+    rels->RowIndex[i] = len;
 }
 
 void lookupIJ(int64_t* ij, const CSR* rels, int64_t i, int64_t j) {
   if (j < 0 || j >= rels->N)
   { *ij = -1; return; }
-  const int64_t* row = rels->ColIndex;
+  const int64_t* row = &rels->ColIndex[0];
   int64_t jbegin = rels->RowIndex[j];
   int64_t jend = rels->RowIndex[j + 1];
   const int64_t* row_iter = &row[jbegin];

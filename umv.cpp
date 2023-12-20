@@ -1,9 +1,9 @@
 
-#include "nbd.hxx"
+#include <nbd.hpp>
 
-#include "stdio.h"
-#include "string.h"
-#include "math.h"
+#include <cstdio>
+#include <cstring>
+#include <cmath>
 
 #include <cstdlib>
 #include <algorithm>
@@ -99,7 +99,7 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
     }
 
     batchParamsCreate(&A[i].params, dimc, dimr, basis[i].U_gpu, A[i].A_ptr, A[i].X_ptr, n_next, &A_next[0], &X_next[0],
-      *Workspace, work_size, N_rows, N_cols, ibegin, rels_near[i].ColIndex, rels_near[i].RowIndex);
+      *Workspace, work_size, N_rows, N_cols, ibegin, &rels_near[i].ColIndex[0], &rels_near[i].RowIndex[0]);
   }
 
   int64_t child = std::get<0>(comm[0].LocalChild[0]);

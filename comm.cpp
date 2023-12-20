@@ -1,6 +1,6 @@
 
-#include "comm.hxx"
-#include "nbd.hxx"
+#include <comm.hpp>
+#include <nbd.hpp>
 
 #include <algorithm>
 #include <numeric>
@@ -277,26 +277,24 @@ void relations(CSR rels[], const CSR* cellRel, int64_t levels, const struct Cell
     csc->M = neighbors;
     csc->N = nodes;
     int64_t ent_max = nodes * csc->M;
-    int64_t* cols = (int64_t*)malloc(sizeof(int64_t) * (nodes + 1 + ent_max));
-    int64_t* rows = &cols[nodes + 1];
+    csc->RowIndex.resize(nodes + 1);
+    csc->ColIndex.resize(ent_max);
 
     int64_t count = 0;
     for (int64_t j = 0; j < nodes; j++) {
       int64_t lc = ibegin + j;
-      cols[j] = count;
+      csc->RowIndex[j] = count;
       int64_t cbegin = cellRel->RowIndex[lc];
       int64_t ent = cellRel->RowIndex[lc + 1] - cbegin;
       for (int64_t k = 0; k < ent; k++) {
-        rows[count + k] = comm[i].iLocal(cellRel->ColIndex[cbegin + k]);
+        csc->ColIndex[count + k] = comm[i].iLocal(cellRel->ColIndex[cbegin + k]);
       }
       count = count + ent;
     }
 
     if (count < ent_max)
-      cols = (int64_t*)realloc(cols, sizeof(int64_t) * (nodes + 1 + count));
-    cols[nodes] = count;
-    csc->RowIndex = cols;
-    csc->ColIndex = &cols[nodes + 1];
+      csc->ColIndex.resize(count);
+    csc->RowIndex[nodes] = count;
   }
 }
 

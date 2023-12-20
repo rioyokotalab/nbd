@@ -1,5 +1,5 @@
 
-#include "nbd.hxx"
+#include <nbd.hpp>
 
 #include <cstdio>
 #include <cstdlib>

@@ -1,10 +1,10 @@
 
-#include "geometry.hxx"
-#include "kernel.hxx"
-#include "nbd.hxx"
-#include "profile.hxx"
+#include <geometry.hpp>
+#include <kernel.hpp>
+#include <nbd.hpp>
+#include <profile.hpp>
 
-#include "omp.h"
+#include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -191,14 +191,10 @@ int main(int argc, char* argv[]) {
       (double)mem_A[0] * 1.e-9, (double)mem_A[1] * 1.e-9, (double)mem_A[2] * 1.e-9, cerr, err, prog_time);
 
   for (int64_t i = 0; i <= levels; i++) {
-    csc_free(&rels_far[i]);
-    csc_free(&rels_near[i]);
     basis_free(&basis[i]);
     node_free(&nodes[i]);
   }
   cellComm_free(cell_comm, levels);
-  csc_free(&cellFar);
-  csc_free(&cellNear);
   
   free(body);
   free(Xbody);
