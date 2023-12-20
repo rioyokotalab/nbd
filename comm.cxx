@@ -271,7 +271,7 @@ void relations(struct CSC rels[], const struct CSC* cellRel, int64_t levels, con
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nodes, neighbors, ibegin;
     content_length(&nodes, &neighbors, &ibegin, &comm[i]);
-    i_global(&ibegin, &comm[i]);
+    ibegin = comm[i].iGlobal(ibegin);
     struct CSC* csc = &rels[i];
 
     csc->M = neighbors;
@@ -287,8 +287,7 @@ void relations(struct CSC rels[], const struct CSC* cellRel, int64_t levels, con
       int64_t cbegin = cellRel->ColIndex[lc];
       int64_t ent = cellRel->ColIndex[lc + 1] - cbegin;
       for (int64_t k = 0; k < ent; k++) {
-        rows[count + k] = cellRel->RowIndex[cbegin + k];
-        i_local(&rows[count + k], &comm[i]);
+        rows[count + k] = comm[i].iLocal(cellRel->RowIndex[cbegin + k]);
       }
       count = count + ent;
     }
@@ -301,14 +300,12 @@ void relations(struct CSC rels[], const struct CSC* cellRel, int64_t levels, con
   }
 }
 
-void i_local(int64_t* ilocal, const struct CellComm* comm) {
-  int64_t iglobal = *ilocal;
-  *ilocal = pnx_to_local(global_to_pnx(iglobal, comm->ProcBoxes), comm->ProcBoxes);
+int64_t CellComm::iLocal(int64_t iglobal) const {
+  return pnx_to_local(global_to_pnx(iglobal, ProcBoxes), ProcBoxes);
 }
 
-void i_global(int64_t* iglobal, const struct CellComm* comm) {
-  int64_t ilocal = *iglobal;
-  *iglobal = pnx_to_global(local_to_pnx(ilocal, comm->ProcBoxes), comm->ProcBoxes);
+int64_t CellComm::iGlobal(int64_t ilocal) const {
+  return pnx_to_global(local_to_pnx(ilocal, ProcBoxes), ProcBoxes);
 }
 
 void content_length(int64_t* local, int64_t* neighbors, int64_t* local_off, const struct CellComm* comm) {

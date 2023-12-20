@@ -58,8 +58,7 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], struct Cell* cells,
     for (int64_t i = 0; i < xlen; i++) {
       int64_t childi = std::get<0>(comm[l].LocalChild[i]);
       int64_t clen = std::get<1>(comm[l].LocalChild[i]);
-      int64_t gi = i;
-      i_global(&gi, &comm[l]);
+      int64_t gi = comm[l].iGlobal(i);
       celli[i] = gi;
 
       if (childi >= 0 && l < levels)
@@ -119,8 +118,8 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], struct Cell* cells,
         body[j] = cells[cj].Body[0];
         lens[j] = cells[cj].Body[1] - cells[cj].Body[0];
         if (cj != ci) {
-          int64_t lj = cj;
-          i_local(&lj, &comm[l]);
+          int64_t lj = comm[l].iLocal(cj);
+          //i_local(&lj, &comm[l]);
           int64_t len = 3 * basis[l].Dims[lj];
           Cbodies.insert(Cbodies.end(), &Skeletons[lj * seg_skeletons], &Skeletons[lj * seg_skeletons + len]);
         }

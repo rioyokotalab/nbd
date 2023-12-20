@@ -73,8 +73,7 @@ int main(int argc, char* argv[]) {
 
   int64_t lbegin = 0, llen = 0;
   content_length(&llen, NULL, &lbegin, &cell_comm[levels]);
-  int64_t gbegin = lbegin;
-  i_global(&gbegin, &cell_comm[levels]);
+  int64_t gbegin = cell_comm[levels].iGlobal(lbegin);
 
   MPI_Barrier(MPI_COMM_WORLD);
   double construct_time = MPI_Wtime(), construct_comm_time;

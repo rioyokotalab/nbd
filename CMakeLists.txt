@@ -12,6 +12,7 @@ set(MKL_LINK dynamic)
 set(MKL_INTERFACE_FULL intel_lp64)
 set(MKL_THREADING sequential)
 set(MKL_MPI intelmpi)
+
 find_package(MKL REQUIRED)
 find_package(MPI REQUIRED)
 find_package(OpenMP REQUIRED)
@@ -20,7 +21,7 @@ find_package(PkgConfig REQUIRED)
 add_executable(lorasp lorasp.cxx linalg.cxx basis.cxx comm.cxx build_tree.cxx umv.cxx)
 target_include_directories(lorasp PRIVATE ./)
 target_link_libraries(lorasp MPI::MPI_CXX OpenMP::OpenMP_CXX MKL::MKL -L$ENV{CUDADIR}/lib64 -lcublas -lcudart -lcusolver -lnccl)
-set_target_properties(lorasp PROPERTIES CUDA_ARCHITECTURES "60;70;72;80")
+set_target_properties(lorasp PROPERTIES CUDA_ARCHITECTURES "80")
 
 pkg_check_modules(MAGMA magma)
 

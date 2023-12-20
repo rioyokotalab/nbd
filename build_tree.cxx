@@ -177,11 +177,6 @@ void getList(char NoF, int64_t* len, int64_t rels[], int64_t ncells, const struc
       getList(NoF, len, rels, ncells, cells, i, k, theta);
 }
 
-int comp_int_64(const void *a, const void *b) {
-  int64_t c = *(int64_t*)a - *(int64_t*)b;
-  return c < 0 ? -1 : (int)(c > 0);
-}
-
 void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cells, double theta) {
   rels->M = ncells;
   rels->N = ncells;
@@ -252,7 +247,7 @@ void loadX(double* X, int64_t seg, const double Xbodies[], int64_t Xbegin, int64
 void evalD(const EvalDouble& eval, struct Matrix* D, const struct CSC* rels, const struct Cell* cells, const double* bodies, const struct CellComm* comm) {
   int64_t ibegin = 0, nodes = 0;
   content_length(&nodes, NULL, &ibegin, comm);
-  i_global(&ibegin, comm);
+  ibegin = comm->iGlobal(ibegin);
 
 #pragma omp parallel for
   for (int64_t i = 0; i < nodes; i++) {
