@@ -8,14 +8,14 @@
 #include <cstdlib>
 #include <algorithm>
 
-void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels) {
+void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struct Base basis[], const CSR rels_near[], const CSR rels_far[], const struct CellComm comm[], int64_t levels) {
   int64_t work_size = 0;
 
   for (int64_t i = levels; i >= 0; i--) {
     int64_t n_i = 0, ulen = 0, nloc = 0;
     content_length(&n_i, &ulen, &nloc, &comm[i]);
-    int64_t nnz = rels_near[i].ColIndex[n_i];
-    int64_t nnz_f = rels_far[i].ColIndex[n_i];
+    int64_t nnz = rels_near[i].RowIndex[n_i];
+    int64_t nnz_f = rels_far[i].RowIndex[n_i];
 
     struct Matrix* arr_m = (struct Matrix*)malloc(sizeof(struct Matrix) * (nnz + nnz_f));
     A[i].A = arr_m;
@@ -37,10 +37,10 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
     work_size = std::max(work_size, work_required);
 
     for (int64_t x = 0; x < n_i; x++) {
-      for (int64_t yx = rels_near[i].ColIndex[x]; yx < rels_near[i].ColIndex[x + 1]; yx++)
+      for (int64_t yx = rels_near[i].RowIndex[x]; yx < rels_near[i].RowIndex[x + 1]; yx++)
         arr_m[yx] = (struct Matrix) { &A[i].A_buf[yx * stride], dimn, dimn, dimn }; // A
 
-      for (int64_t yx = rels_far[i].ColIndex[x]; yx < rels_far[i].ColIndex[x + 1]; yx++)
+      for (int64_t yx = rels_far[i].RowIndex[x]; yx < rels_far[i].RowIndex[x + 1]; yx++)
         arr_m[yx + nnz] = (struct Matrix) { NULL, basis[i].dimS, basis[i].dimS, dimn_up }; // S
     }
 
@@ -53,16 +53,16 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
         int64_t x0 = std::get<0>(comm[i].LocalChild[j + nloc]) - ploc;
         int64_t lenx = std::get<1>(comm[i].LocalChild[j + nloc]);
 
-        for (int64_t ij = rels_near[i].ColIndex[j]; ij < rels_near[i].ColIndex[j + 1]; ij++) {
-          int64_t li = rels_near[i].RowIndex[ij];
+        for (int64_t ij = rels_near[i].RowIndex[j]; ij < rels_near[i].RowIndex[j + 1]; ij++) {
+          int64_t li = rels_near[i].ColIndex[ij];
           int64_t y0 = std::get<0>(comm[i].LocalChild[li]);
           int64_t leny = std::get<1>(comm[i].LocalChild[li]);
           
           for (int64_t x = 0; x < lenx; x++)
             if ((x + x0) >= 0 && (x + x0) < rels_far[i + 1].N)
-              for (int64_t yx = rels_far[i + 1].ColIndex[x + x0]; yx < rels_far[i + 1].ColIndex[x + x0 + 1]; yx++)
+              for (int64_t yx = rels_far[i + 1].RowIndex[x + x0]; yx < rels_far[i + 1].RowIndex[x + x0 + 1]; yx++)
                 for (int64_t y = 0; y < leny; y++)
-                  if (rels_far[i + 1].RowIndex[yx] == (y + y0))
+                  if (rels_far[i + 1].ColIndex[yx] == (y + y0))
                     A[i + 1].S[yx].A = &A[i].A[ij].A[(y * dimn + x) * seg];
         }
       }
@@ -83,8 +83,8 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
 
     std::vector<double*> A_next(nnz);
     for (int64_t x = 0; x < N_cols; x++)
-      for (int64_t yx = rels_near[i].ColIndex[x]; yx < rels_near[i].ColIndex[x + 1]; yx++) {
-        int64_t y = rels_near[i].RowIndex[yx];
+      for (int64_t yx = rels_near[i].RowIndex[x]; yx < rels_near[i].RowIndex[x + 1]; yx++) {
+        int64_t y = rels_near[i].ColIndex[yx];
         std::pair<int64_t, int64_t> px = comm[i].LocalParent[x + ibegin];
         std::pair<int64_t, int64_t> py = comm[i].LocalParent[y];
         int64_t ij = -1;
@@ -99,7 +99,7 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
     }
 
     batchParamsCreate(&A[i].params, dimc, dimr, basis[i].U_gpu, A[i].A_ptr, A[i].X_ptr, n_next, &A_next[0], &X_next[0],
-      *Workspace, work_size, N_rows, N_cols, ibegin, rels_near[i].RowIndex, rels_near[i].ColIndex);
+      *Workspace, work_size, N_rows, N_cols, ibegin, rels_near[i].ColIndex, rels_near[i].RowIndex);
   }
 
   int64_t child = std::get<0>(comm[0].LocalChild[0]);
@@ -164,7 +164,7 @@ void rightHandSides_free(struct RightHandSides* rhs) {
   free(rhs->X);
 }
 
-void matVecA(const struct Node A[], const struct Base basis[], const struct CSC rels_near[], double* X, const struct CellComm comm[], int64_t levels) {
+void matVecA(const struct Node A[], const struct Base basis[], const CSR rels_near[], double* X, const struct CellComm comm[], int64_t levels) {
   int64_t lbegin = 0, llen = 0;
   content_length(&llen, NULL, &lbegin, &comm[levels]);
 
@@ -194,8 +194,8 @@ void matVecA(const struct Node A[], const struct Base basis[], const struct CSC 
     for (int64_t j = 0; j < iboxes; j++)
       mmult('N', 'N', &basis[i].Uo[j + ibegin], &rhs[i].Xc[j + ibegin], &rhs[i].B[j + ibegin], 1., 0.);
     for (int64_t y = 0; y < iboxes; y++)
-      for (int64_t xy = rels_near[i].ColIndex[y]; xy < rels_near[i].ColIndex[y + 1]; xy++) {
-        int64_t x = rels_near[i].RowIndex[xy];
+      for (int64_t xy = rels_near[i].RowIndex[y]; xy < rels_near[i].RowIndex[y + 1]; xy++) {
+        int64_t x = rels_near[i].ColIndex[xy];
         mmult('N', 'N', &A[i].A[xy], &rhs[i].X[x], &rhs[i].B[y + ibegin], 1., 1.);
       }
   }

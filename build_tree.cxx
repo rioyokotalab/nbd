@@ -177,7 +177,7 @@ void getList(char NoF, int64_t* len, int64_t rels[], int64_t ncells, const struc
       getList(NoF, len, rels, ncells, cells, i, k, theta);
 }
 
-void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cells, double theta) {
+void traverse(char NoF, CSR* rels, int64_t ncells, const struct Cell* cells, double theta) {
   rels->M = ncells;
   rels->N = ncells;
   int64_t* rel_arr = (int64_t*)malloc(sizeof(int64_t) * (ncells * ncells + ncells + 1));
@@ -188,8 +188,8 @@ void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cel
     rel_arr = (int64_t*)realloc(rel_arr, sizeof(int64_t) * (len + ncells + 1));
   int64_t* rel_rows = &rel_arr[ncells + 1];
   std::sort(rel_rows, rel_rows + len);
-  rels->ColIndex = rel_arr;
-  rels->RowIndex = rel_rows;
+  rels->RowIndex = rel_arr;
+  rels->ColIndex = rel_rows;
 
   int64_t loc = -1;
   for (int64_t i = 0; i < len; i++) {
@@ -204,16 +204,16 @@ void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cel
     rel_arr[i] = len;
 }
 
-void csc_free(struct CSC* csc) {
-  free(csc->ColIndex);
+void csc_free(CSR* csc) {
+  free(csc->RowIndex);
 }
 
-void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j) {
+void lookupIJ(int64_t* ij, const CSR* rels, int64_t i, int64_t j) {
   if (j < 0 || j >= rels->N)
   { *ij = -1; return; }
-  const int64_t* row = rels->RowIndex;
-  int64_t jbegin = rels->ColIndex[j];
-  int64_t jend = rels->ColIndex[j + 1];
+  const int64_t* row = rels->ColIndex;
+  int64_t jbegin = rels->RowIndex[j];
+  int64_t jend = rels->RowIndex[j + 1];
   const int64_t* row_iter = &row[jbegin];
   while (row_iter != &row[jend] && *row_iter != i)
     row_iter = row_iter + 1;
@@ -221,11 +221,11 @@ void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j) {
   *ij = (k < jend) ? k : -1;
 }
 
-void countMaxIJ(int64_t* max_i, int64_t* max_j, const struct CSC* rels) {
+void countMaxIJ(int64_t* max_i, int64_t* max_j, const CSR* rels) {
   std::vector<int64_t> countx(rels->N, 0), county(rels->M, 0);
   for (int64_t x = 0; x < rels->N; x++)
-    for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
-      int64_t y = rels->RowIndex[yx];
+    for (int64_t yx = rels->RowIndex[x]; yx < rels->RowIndex[x + 1]; yx++) {
+      int64_t y = rels->ColIndex[yx];
       countx[x] = countx[x] + 1;
       county[y] = county[y] + 1;
     }
@@ -244,7 +244,7 @@ void loadX(double* X, int64_t seg, const double Xbodies[], int64_t Xbegin, int64
   }
 }
 
-void evalD(const EvalDouble& eval, struct Matrix* D, const struct CSC* rels, const struct Cell* cells, const double* bodies, const struct CellComm* comm) {
+void evalD(const EvalDouble& eval, struct Matrix* D, const CSR* rels, const struct Cell* cells, const double* bodies, const struct CellComm* comm) {
   int64_t ibegin = 0, nodes = 0;
   content_length(&nodes, NULL, &ibegin, comm);
   ibegin = comm->iGlobal(ibegin);
@@ -253,12 +253,12 @@ void evalD(const EvalDouble& eval, struct Matrix* D, const struct CSC* rels, con
   for (int64_t i = 0; i < nodes; i++) {
     int64_t lc = ibegin + i;
     const struct Cell* ci = &cells[lc];
-    int64_t nbegin = rels->ColIndex[lc];
-    int64_t nlen = rels->ColIndex[lc + 1] - nbegin;
-    const int64_t* ngbs = &rels->RowIndex[nbegin];
+    int64_t nbegin = rels->RowIndex[lc];
+    int64_t nlen = rels->RowIndex[lc + 1] - nbegin;
+    const int64_t* ngbs = &rels->ColIndex[nbegin];
     int64_t x_begin = ci->Body[0];
     int64_t n = ci->Body[1] - x_begin;
-    int64_t offsetD = nbegin - rels->ColIndex[ibegin];
+    int64_t offsetD = nbegin - rels->RowIndex[ibegin];
 
     for (int64_t j = 0; j < nlen; j++) {
       int64_t lj = ngbs[j];
@@ -270,7 +270,7 @@ void evalD(const EvalDouble& eval, struct Matrix* D, const struct CSC* rels, con
   }
 }
 
-void evalS(const EvalDouble& eval, struct Matrix* S, const struct Base* basis, const struct CSC* rels, const struct CellComm* comm) {
+void evalS(const EvalDouble& eval, struct Matrix* S, const struct Base* basis, const CSR* rels, const struct CellComm* comm) {
   int64_t ibegin = 0;
   content_length(NULL, NULL, &ibegin, comm);
   int64_t seg = basis->dimS * 3;
@@ -279,8 +279,8 @@ void evalS(const EvalDouble& eval, struct Matrix* S, const struct Base* basis, c
   for (int64_t x = 0; x < rels->N; x++) {
     int64_t n = basis->DimsLr[x + ibegin];
 
-    for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
-      int64_t y = rels->RowIndex[yx];
+    for (int64_t yx = rels->RowIndex[x]; yx < rels->RowIndex[x + 1]; yx++) {
+      int64_t y = rels->ColIndex[yx];
       int64_t m = basis->DimsLr[y];
       gen_matrix(eval, n, m, &basis->M_cpu[(x + ibegin) * seg], &basis->M_cpu[y * seg], S[yx].A, S[yx].LDA);
       mul_AS(&basis->R[x + ibegin], &basis->R[y], &S[yx]);

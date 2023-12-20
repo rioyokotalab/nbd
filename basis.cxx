@@ -40,7 +40,7 @@ int64_t generate_far(int64_t flen, int64_t far[], int64_t ngbs, const int64_t ng
   return flen;
 }
 
-void buildBasis(const EvalDouble& eval, struct Base basis[], struct Cell* cells, const struct CSC* rel_near, int64_t levels,
+void buildBasis(const EvalDouble& eval, struct Base basis[], struct Cell* cells, const CSR* rel_near, int64_t levels,
   const struct CellComm* comm, const double* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts, int64_t alignment) {
 
   for (int64_t l = levels; l >= 0; l--) {
@@ -107,9 +107,9 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], struct Cell* cells,
       double* Xbodies = &Skeletons[(i + ibegin) * seg_skeletons];
 
       int64_t ci = celli[i + ibegin];
-      int64_t nbegin = rel_near->ColIndex[ci];
-      int64_t nlen = rel_near->ColIndex[ci + 1] - nbegin;
-      const int64_t* ngbs = &rel_near->RowIndex[nbegin];
+      int64_t nbegin = rel_near->RowIndex[ci];
+      int64_t nlen = rel_near->RowIndex[ci + 1] - nbegin;
+      const int64_t* ngbs = &rel_near->ColIndex[nbegin];
       std::vector<double> Cbodies;
       std::vector<int64_t> remote(sp_pts), body(nlen), lens(nlen);
 
@@ -119,7 +119,6 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], struct Cell* cells,
         lens[j] = cells[cj].Body[1] - cells[cj].Body[0];
         if (cj != ci) {
           int64_t lj = comm[l].iLocal(cj);
-          //i_local(&lj, &comm[l]);
           int64_t len = 3 * basis[l].Dims[lj];
           Cbodies.insert(Cbodies.end(), &Skeletons[lj * seg_skeletons], &Skeletons[lj * seg_skeletons + len]);
         }

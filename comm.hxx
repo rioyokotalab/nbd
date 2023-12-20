@@ -54,11 +54,13 @@ struct CellComm {
   int64_t iGlobal(int64_t ilocal) const;
 };
 
-void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells, const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels);
+struct CSR;
+
+void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells, const CSR* cellFar, const CSR* cellNear, int64_t levels);
 
 void cellComm_free(struct CellComm* comms, int64_t levels);
 
-void relations(struct CSC rels[], const struct CSC* cellRel, int64_t levels, const struct CellComm* comm);
+void relations(CSR rels[], const CSR* cellRel, int64_t levels, const struct CellComm* comm);
 
 void content_length(int64_t* local, int64_t* neighbors, int64_t* local_off, const struct CellComm* comm);
 

@@ -15,7 +15,7 @@
 struct Matrix { double* A; int64_t M, N, LDA; };
 
 struct Cell { int64_t Child[2], Body[2], Level; double R[3], C[3]; };
-struct CSC { int64_t M, N, *ColIndex, *RowIndex; };
+struct CSR { int64_t M, N, *RowIndex, *ColIndex; };
 
 struct BatchedFactorParams { 
   int64_t N_r, N_s, N_upper, L_diag, L_nnz, L_lower, L_rows, L_tmp;
@@ -73,27 +73,27 @@ void buildTree(int64_t* ncells, struct Cell* cells, double* bodies, int64_t nbod
 
 void buildTreeBuckets(struct Cell* cells, const double* bodies, const int64_t buckets[], int64_t levels);
 
-void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cells, double theta);
+void traverse(char NoF, CSR* rels, int64_t ncells, const struct Cell* cells, double theta);
 
-void csc_free(struct CSC* csc);
+void csc_free(CSR* csc);
 
-void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j);
+void lookupIJ(int64_t* ij, const CSR* rels, int64_t i, int64_t j);
 
-void countMaxIJ(int64_t* max_i, int64_t* max_j, const struct CSC* rels);
+void countMaxIJ(int64_t* max_i, int64_t* max_j, const CSR* rels);
 
 void loadX(double* X, int64_t seg, const double Xbodies[], int64_t Xbegin, int64_t ncells, const struct Cell cells[]);
 
-void evalD(const EvalDouble& eval, struct Matrix* D, const struct CSC* rels, const struct Cell* cells, const double* bodies, const struct CellComm* comm);
+void evalD(const EvalDouble& eval, struct Matrix* D, const CSR* rels, const struct Cell* cells, const double* bodies, const struct CellComm* comm);
 
-void evalS(const EvalDouble& eval, struct Matrix* S, const struct Base* basis, const struct CSC* rels, const struct CellComm* comm);
+void evalS(const EvalDouble& eval, struct Matrix* S, const struct Base* basis, const CSR* rels, const struct CellComm* comm);
 
-void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels);
+void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struct Base basis[], const CSR rels_near[], const CSR rels_far[], const struct CellComm comm[], int64_t levels);
 
 void node_free(struct Node* node);
 
 void factorA_mov_mem(char dir, struct Node A[], const struct Base basis[], int64_t levels);
 
-void matVecA(const struct Node A[], const struct Base basis[], const struct CSC rels_near[], double* X, const struct CellComm comm[], int64_t levels);
+void matVecA(const struct Node A[], const struct Base basis[], const CSR rels_near[], double* X, const struct CellComm comm[], int64_t levels);
 
 void solveRelErr(double* err_out, const double* X, const double* ref, int64_t lenX);
 
