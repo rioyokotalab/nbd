@@ -15,7 +15,11 @@
 
 struct Matrix { double* A; int64_t M, N, LDA; };
 
-struct Cell { int64_t Child[2], Body[2], Level; double R[3], C[3]; };
+class Cell {
+public:
+  int64_t Child[2], Body[2], Level;
+  double R[3], C[3];
+};
 
 struct BatchedFactorParams { 
   int64_t N_r, N_s, N_upper, L_diag, L_nnz, L_lower, L_rows, L_tmp;
@@ -74,8 +78,6 @@ void buildTree(int64_t* ncells, struct Cell* cells, double* bodies, int64_t nbod
 void buildTreeBuckets(struct Cell* cells, const double* bodies, const int64_t buckets[], int64_t levels);
 
 void traverse(char NoF, CSR* rels, int64_t ncells, const struct Cell* cells, double theta);
-
-void lookupIJ(int64_t* ij, const CSR* rels, int64_t i, int64_t j);
 
 void countMaxIJ(int64_t* max_i, int64_t* max_j, const CSR* rels);
 

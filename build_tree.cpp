@@ -49,6 +49,31 @@ void sort_bodies(double* bodies, int64_t nbodies, int64_t sdim) {
   });
 }
 
+int admis_check(double theta, const double C1[], const double C2[], const double R1[], const double R2[]) {
+  double dCi[3];
+  dCi[0] = C1[0] - C2[0];
+  dCi[1] = C1[1] - C2[1];
+  dCi[2] = C1[2] - C2[2];
+
+  dCi[0] = dCi[0] * dCi[0];
+  dCi[1] = dCi[1] * dCi[1];
+  dCi[2] = dCi[2] * dCi[2];
+
+  double dRi[3];
+  dRi[0] = R1[0] * R1[0];
+  dRi[1] = R1[1] * R1[1];
+  dRi[2] = R1[2] * R1[2];
+
+  double dRj[3];
+  dRj[0] = R2[0] * R2[0];
+  dRj[1] = R2[1] * R2[1];
+  dRj[2] = R2[2] * R2[2];
+
+  double dC = dCi[0] + dCi[1] + dCi[2];
+  double dR = (dRi[0] + dRi[1] + dRi[2] + dRj[0] + dRj[1] + dRj[2]) * theta;
+  return (int)(dC > dR);
+}
+
 void buildTree(int64_t* ncells, struct Cell* cells, double* bodies, int64_t nbodies, int64_t levels) {
   struct Cell* root = &cells[0];
   root->Body[0] = 0;
@@ -126,32 +151,6 @@ void buildTreeBuckets(struct Cell* cells, const double* bodies, const int64_t bu
     get_bounds(&bodies[begin * 3], len, cells[i].R, cells[i].C);
   }
 }
-
-int admis_check(double theta, const double C1[], const double C2[], const double R1[], const double R2[]) {
-  double dCi[3];
-  dCi[0] = C1[0] - C2[0];
-  dCi[1] = C1[1] - C2[1];
-  dCi[2] = C1[2] - C2[2];
-
-  dCi[0] = dCi[0] * dCi[0];
-  dCi[1] = dCi[1] * dCi[1];
-  dCi[2] = dCi[2] * dCi[2];
-
-  double dRi[3];
-  dRi[0] = R1[0] * R1[0];
-  dRi[1] = R1[1] * R1[1];
-  dRi[2] = R1[2] * R1[2];
-
-  double dRj[3];
-  dRj[0] = R2[0] * R2[0];
-  dRj[1] = R2[1] * R2[1];
-  dRj[2] = R2[2] * R2[2];
-
-  double dC = dCi[0] + dCi[1] + dCi[2];
-  double dR = (dRi[0] + dRi[1] + dRi[2] + dRj[0] + dRj[1] + dRj[2]) * theta;
-  return (int)(dC > dR);
-}
-
 void getList(char NoF, int64_t* len, int64_t rels[], int64_t ncells, const struct Cell cells[], int64_t i, int64_t j, double theta) {
   const struct Cell* Ci = &cells[i];
   const struct Cell* Cj = &cells[j];
@@ -199,19 +198,6 @@ void traverse(char NoF, CSR* rels, int64_t ncells, const struct Cell* cells, dou
   }
   for (int64_t i = loc + 1; i <= ncells; i++)
     rels->RowIndex[i] = len;
-}
-
-void lookupIJ(int64_t* ij, const CSR* rels, int64_t i, int64_t j) {
-  if (j < 0 || j >= rels->N)
-  { *ij = -1; return; }
-  const int64_t* row = &rels->ColIndex[0];
-  int64_t jbegin = rels->RowIndex[j];
-  int64_t jend = rels->RowIndex[j + 1];
-  const int64_t* row_iter = &row[jbegin];
-  while (row_iter != &row[jend] && *row_iter != i)
-    row_iter = row_iter + 1;
-  int64_t k = row_iter - row;
-  *ij = (k < jend) ? k : -1;
 }
 
 void countMaxIJ(int64_t* max_i, int64_t* max_j, const CSR* rels) {

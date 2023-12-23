@@ -87,8 +87,7 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
         int64_t y = rels_near[i].ColIndex[yx];
         std::pair<int64_t, int64_t> px = comm[i].LocalParent[x + ibegin];
         std::pair<int64_t, int64_t> py = comm[i].LocalParent[y];
-        int64_t ij = -1;
-        lookupIJ(&ij, &rels_near[i - 1], std::get<0>(py), std::get<0>(px) - ibegin_next);
+        int64_t ij = rels_near[i - 1].lookupIJ(std::get<0>(py), std::get<0>(px) - ibegin_next);
         A_next[yx] = &A[i - 1].A_ptr[(std::get<1>(py) * n_next + std::get<1>(px)) * basis[i].dimS + ij * n_next * n_next];
       }
 

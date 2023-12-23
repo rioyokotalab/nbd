@@ -33,10 +33,10 @@ int main(int argc, char* argv[]) {
   
   double* body = (double*)malloc(sizeof(double) * Nbody * 3);
   double* Xbody = (double*)malloc(sizeof(double) * Nbody);
-  struct Cell* cell = (struct Cell*)malloc(sizeof(struct Cell) * ncells);
+  struct Cell* cell = (struct Cell*)calloc(ncells, sizeof(struct Cell));
   struct CSR cellNear, cellFar;
-  struct CSR* rels_far = (struct CSR*)malloc(sizeof(CSR) * (levels + 1));
-  struct CSR* rels_near = (struct CSR*)malloc(sizeof(CSR) * (levels + 1));
+  struct CSR* rels_far = (struct CSR*)calloc(levels + 1, sizeof(CSR));
+  struct CSR* rels_near = (struct CSR*)calloc(levels + 1, sizeof(CSR));
   struct CellComm* cell_comm = (struct CellComm*)calloc(levels + 1, sizeof(struct CellComm));
   struct Base* basis = (struct Base*)calloc(levels + 1, sizeof(struct Base));
   struct Node* nodes = (struct Node*)malloc(sizeof(struct Node) * (levels + 1));
