@@ -17,7 +17,7 @@ find_package(MKL REQUIRED)
 find_package(MPI REQUIRED)
 find_package(OpenMP REQUIRED)
 
-add_executable(lorasp lorasp.cpp linalg.cpp basis.cpp comm.cpp build_tree.cpp umv.cpp)
+add_executable(lorasp lorasp.cpp linalg.cpp basis.cpp comm.cpp build_tree.cpp umv.cpp gpu_linalg.cu)
 target_include_directories(lorasp PRIVATE ./)
 target_link_libraries(lorasp MPI::MPI_CXX OpenMP::OpenMP_CXX MKL::MKL -L$ENV{CUDADIR}/lib64 -lcublas -lcudart -lcusolver -lnccl)
 set_target_properties(lorasp PROPERTIES CUDA_ARCHITECTURES "80")

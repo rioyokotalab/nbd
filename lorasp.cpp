@@ -10,7 +10,7 @@
 #include <math.h>
 
 int main(int argc, char* argv[]) {
-  cudaStream_t stream = init_libs(&argc, &argv);
+  cudaStream_t stream = (cudaStream_t)init_libs(&argc, &argv);
 
   double prog_time = MPI_Wtime();
 
