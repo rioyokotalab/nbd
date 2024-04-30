@@ -20,18 +20,18 @@ void* init_libs(int* argc, char*** argv);
 void fin_libs();
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE);
 
-void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, double* X_ptr, int64_t N_up, double** A_up, double** X_up,
+void batchParamsCreate(BatchedFactorParams* params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, double* X_ptr, int64_t N_up, double** A_up, double** X_up,
   double* Workspace, int64_t Lwork, int64_t N_rows, int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[]);
-void batchParamsDestory(struct BatchedFactorParams* params);
+void batchParamsDestory(BatchedFactorParams* params);
 
-void lastParamsCreate(struct BatchedFactorParams* params, double* A, double* X, int64_t N, int64_t S, int64_t clen, const int64_t cdims[]);
+void lastParamsCreate(BatchedFactorParams* params, double* A, double* X, int64_t N, int64_t S, int64_t clen, const int64_t cdims[]);
 
 void allocBufferedList(void** A_ptr, void** A_buffer, int64_t element_size, int64_t count);
 void flushBuffer(char dir, void* A_ptr, void* A_buffer, int64_t element_size, int64_t count);
 void freeBufferedList(void* A_ptr, void* A_buffer);
 
-void batchCholeskyFactor(struct BatchedFactorParams* params, const struct CellComm* comm);
-void batchForwardULV(struct BatchedFactorParams* params, const struct CellComm* comm);
-void batchBackwardULV(struct BatchedFactorParams* params, const struct CellComm* comm);
-void chol_decomp(struct BatchedFactorParams* params, const struct CellComm* comm);
-void chol_solve(struct BatchedFactorParams* params, const struct CellComm* comm);
+void batchCholeskyFactor(BatchedFactorParams* params, const struct CellComm* comm);
+void batchForwardULV(BatchedFactorParams* params, const struct CellComm* comm);
+void batchBackwardULV(BatchedFactorParams* params, const struct CellComm* comm);
+void chol_decomp(BatchedFactorParams* params, const struct CellComm* comm);
+void chol_solve(BatchedFactorParams* params, const struct CellComm* comm);

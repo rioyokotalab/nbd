@@ -118,7 +118,7 @@ int64_t count_apperance_x(const int64_t X[], int64_t AX[], int64_t lenX) {
   return *std::max_element(count.begin(), count.end());
 }
 
-void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, double* X_ptr, int64_t N_up, double** A_up, double** X_up,
+void batchParamsCreate(BatchedFactorParams* params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, double* X_ptr, int64_t N_up, double** A_up, double** X_up,
   double* Workspace, int64_t Lwork, int64_t N_rows, int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[]) {
   
   int64_t N_dim = R_dim + S_dim;
@@ -196,7 +196,7 @@ void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_
   std::transform(ind.begin(), ind.begin() + N_cols, _X_d, [=](int64_t i) { return &X_ptr[N_dim * (i + col_offset)]; });
   std::transform(ind.begin(), ind.begin() + N_cols, _U_i, [=](int64_t i) { return &U_ptr[stride * N_rows + R_dim * i]; });
   
-  memset((void*)params, 0, sizeof(struct BatchedFactorParams));
+  memset((void*)params, 0, sizeof(BatchedFactorParams));
 
   params->N_r = R_dim;
   params->N_s = S_dim;
@@ -249,7 +249,7 @@ void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_
   cudaMemcpy(ptrs_diag, ptrs_diag_cpu.data(), sizeof(double*) * N_rows_aligned * ND, cudaMemcpyHostToDevice);
 }
 
-void batchParamsDestory(struct BatchedFactorParams* params) {
+void batchParamsDestory(BatchedFactorParams* params) {
   if (params->X_d)
     cudaFree(params->X_d);
   if (params->U_r)
@@ -262,7 +262,7 @@ void batchParamsDestory(struct BatchedFactorParams* params) {
     cudaFree(params->ipiv);  
 }
 
-void batchCholeskyFactor(struct BatchedFactorParams* params, const struct CellComm* comm) {
+void batchCholeskyFactor(BatchedFactorParams* params, const struct CellComm* comm) {
   int64_t U = params->N_upper, R = params->N_r, S = params->N_s, N = R + S, D = params->L_diag;
   double one = 1., zero = 0., minus_one = -1.;
   int info_host = 0;
@@ -308,7 +308,7 @@ void batchCholeskyFactor(struct BatchedFactorParams* params, const struct CellCo
   }
 }
 
-void batchForwardULV(struct BatchedFactorParams* params, const struct CellComm* comm) {
+void batchForwardULV(BatchedFactorParams* params, const struct CellComm* comm) {
   int64_t R = params->N_r, S = params->N_s, N = R + S, D = params->L_diag, ONE = 1;
   int64_t K = params->Kfwd;
   double one = 1., zero = 0., minus_one = -1.;
@@ -338,7 +338,7 @@ void batchForwardULV(struct BatchedFactorParams* params, const struct CellComm* 
     params->ACC_data, N, N * K, params->ONE_DATA, K, 0, &one, params->X_data, R, R, params->L_rows);
 }
 
-void batchBackwardULV(struct BatchedFactorParams* params, const struct CellComm* comm) {
+void batchBackwardULV(BatchedFactorParams* params, const struct CellComm* comm) {
   int64_t R = params->N_r, S = params->N_s, N = R + S, D = params->L_diag, ONE = 1;
   int64_t K = params->Kback;
   double one = 1., zero = 0., minus_one = -1.;
@@ -367,8 +367,8 @@ void batchBackwardULV(struct BatchedFactorParams* params, const struct CellComm*
   dup_bcast_gpu(params->X_data, params->L_rows * N, comm);
 }
 
-void lastParamsCreate(struct BatchedFactorParams* params, double* A, double* X, int64_t N, int64_t S, int64_t clen, const int64_t cdims[]) {
-  memset((void*)params, 0, sizeof(struct BatchedFactorParams));
+void lastParamsCreate(BatchedFactorParams* params, double* A, double* X, int64_t N, int64_t S, int64_t clen, const int64_t cdims[]) {
+  memset((void*)params, 0, sizeof(BatchedFactorParams));
 
   params->A_data = A;
   params->X_data = X;
@@ -388,7 +388,7 @@ void lastParamsCreate(struct BatchedFactorParams* params, double* A, double* X, 
   cudaMalloc((void**)&params->info, sizeof(int));
 }
 
-void chol_decomp(struct BatchedFactorParams* params, const struct CellComm* comm) {
+void chol_decomp(BatchedFactorParams* params, const struct CellComm* comm) {
   double* A = params->A_data;
   int64_t N = params->N_r;
   double one = 1.;
@@ -399,7 +399,7 @@ void chol_decomp(struct BatchedFactorParams* params, const struct CellComm* comm
 
 }
 
-void chol_solve(struct BatchedFactorParams* params, const struct CellComm* comm) {
+void chol_solve(BatchedFactorParams* params, const struct CellComm* comm) {
   const double* A = params->A_data;
   double* X = params->X_data;
   int64_t N = params->N_r;

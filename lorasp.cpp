@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) {
   int64_t Nleaf = (int64_t)1 << levels;
   int64_t ncells = Nleaf + Nleaf - 1;
   
-  Laplace3D eval(1.e-6);
+  Laplace3D eval(1.);
   //Yukawa3D eval(1.e-6, 1.);
   //Gaussian eval(0.2);
   

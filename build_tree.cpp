@@ -261,7 +261,7 @@ void evalS(const EvalDouble& eval, struct Matrix* S, const struct Base* basis, c
     for (int64_t yx = rels->RowIndex[x]; yx < rels->RowIndex[x + 1]; yx++) {
       int64_t y = rels->ColIndex[yx];
       int64_t m = basis->DimsLr[y];
-      gen_matrix(eval, n, m, &basis->M_cpu[(x + ibegin) * seg], &basis->M_cpu[y * seg], S[yx].A, S[yx].LDA);
+      gen_matrix(eval, n, m, &basis->M[(x + ibegin) * seg], &basis->M[y * seg], S[yx].A, S[yx].LDA);
       mul_AS(&basis->R[x + ibegin], &basis->R[y], &S[yx]);
     }
   }
