@@ -130,10 +130,9 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], struct Cell* cells,
         for (int64_t k = 0; k < 3; k++)
           Fbodies[j * 3 + k] = bodies[remote[j] * 3 + k];
       
-      int64_t rank = compute_basis(eval, epi, 1, mrank, ske_len, mat, seg_dim, &Xbodies[0], 0, &Cbodies[0], Fbodies.size() / 3, &Fbodies[0]);
-      //int64_t rank = compute_basis(eval, epi, 1, mrank, ske_len, mat, seg_dim, &Xbodies[0], Cbodies.size() / 3, &Cbodies[0], Fbodies.size() / 3, &Fbodies[0]);
+      //int64_t rank = compute_basis(eval, epi, 1, mrank, ske_len, mat, seg_dim, &Xbodies[0], 0, &Cbodies[0], Fbodies.size() / 3, &Fbodies[0]);
+      int64_t rank = compute_basis(eval, epi, 1, mrank, ske_len, mat, seg_dim, &Xbodies[0], Cbodies.size() / 3, &Cbodies[0], Fbodies.size() / 3, &Fbodies[0]);
       basis[l].DimsLr[i + ibegin] = rank;
-      printf("%d %d\n", i, rank);
     }
     neighbor_bcast_sizes_cpu(basis[l].DimsLr.data(), &comm[l]);
 

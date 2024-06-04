@@ -62,7 +62,7 @@ int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int6
     for (int64_t i = 0; i < Nclose; i += M) {
       int64_t len = std::min(M, Nclose - i);
       gen_matrix(eval, len, len, &Cbodies[i * 3], &Cbodies[i * 3], &U[0], M);
-      LAPACKE_dgesv(LAPACK_COL_MAJOR, len, M, &U[0], M, &ipiv[0], &Aall[i], ldm);
+      //LAPACKE_dgesv(LAPACK_COL_MAJOR, len, M, &U[0], M, &ipiv[0], &Aall[i], ldm);
     }
 
     std::fill(ipiv.begin(), ipiv.end(), 0);

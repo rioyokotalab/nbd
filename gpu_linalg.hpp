@@ -16,6 +16,18 @@ public:
   double** ONE_LIST, *ONE_DATA;
 };
 
+class Node {
+public:
+  int64_t lenA, lenS;
+  struct Matrix *A, *S;
+  double* A_ptr, *A_buf, *X_ptr, *X_buf;
+  struct BatchedFactorParams params; 
+};
+
+class Base;
+class CellComm;
+class CSR;
+
 void* init_libs(int* argc, char*** argv);
 void fin_libs();
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE);
@@ -30,8 +42,12 @@ void allocBufferedList(void** A_ptr, void** A_buffer, int64_t element_size, int6
 void flushBuffer(char dir, void* A_ptr, void* A_buffer, int64_t element_size, int64_t count);
 void freeBufferedList(void* A_ptr, void* A_buffer);
 
-void batchCholeskyFactor(BatchedFactorParams* params, const struct CellComm* comm);
-void batchForwardULV(BatchedFactorParams* params, const struct CellComm* comm);
-void batchBackwardULV(BatchedFactorParams* params, const struct CellComm* comm);
-void chol_decomp(BatchedFactorParams* params, const struct CellComm* comm);
-void chol_solve(BatchedFactorParams* params, const struct CellComm* comm);
+void batchCholeskyFactor(BatchedFactorParams* params, const CellComm* comm);
+void batchForwardULV(BatchedFactorParams* params, const CellComm* comm);
+void batchBackwardULV(BatchedFactorParams* params, const CellComm* comm);
+void chol_decomp(BatchedFactorParams* params, const CellComm* comm);
+void chol_solve(BatchedFactorParams* params, const CellComm* comm);
+
+void allocNodes(Node A[], double** Workspace, int64_t* Lwork, const Base basis[], const CSR rels_near[], const CSR rels_far[], const CellComm comm[], int64_t levels);
+void node_free(Node* node);
+void factorA_mov_mem(char dir, Node A[], const Base basis[], int64_t levels);

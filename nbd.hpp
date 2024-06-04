@@ -21,13 +21,6 @@ public:
   double R[3], C[3];
 };
 
-struct Node {
-  int64_t lenA, lenS;
-  struct Matrix *A, *S;
-  double* A_ptr, *A_buf, *X_ptr, *X_buf;
-  struct BatchedFactorParams params; 
-};
-
 class CSR {
 public:
   int64_t M, N;
