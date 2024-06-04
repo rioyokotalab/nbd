@@ -55,7 +55,7 @@ int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int6
   if (M > 0 && (Nclose > 0 || Nfar > 0)) {
     int64_t ldm = std::max(M, Nclose + Nfar);
     std::vector<double> Aall(M * ldm, 0.), U(M * M), S(M * 2);
-    std::vector<int32_t> ipiv(M);
+    std::vector<long long> ipiv(M);
     gen_matrix(eval, Nclose, M, Cbodies, Xbodies, &Aall[0], ldm);
     gen_matrix(eval, Nfar, M, Fbodies, Xbodies, &Aall[Nclose], ldm);
 
@@ -78,7 +78,7 @@ int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int6
     
     if (rank > 0) {
       if (rank < M)
-        LAPACKE_dgesv(LAPACK_COL_MAJOR, rank, M - rank, &U[0], M, (int32_t*)&S[0], &U[rank * M], M);
+        LAPACKE_dgesv(LAPACK_COL_MAJOR, rank, M - rank, &U[0], M, (long long*)&S[0], &U[rank * M], M);
       LAPACKE_dlaset(LAPACK_COL_MAJOR, 'F', rank, rank, 0., 1., &U[0], M);
     }
 

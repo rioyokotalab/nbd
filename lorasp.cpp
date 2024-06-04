@@ -4,7 +4,6 @@
 #include <nbd.hpp>
 #include <profile.hpp>
 
-#include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -171,7 +170,7 @@ int main(int argc, char* argv[]) {
   prog_time = MPI_Wtime() - prog_time;
 
   if (mpi_rank == 0)
-    printf("LORASP: %d,%d,%lf,%d,%d,%d\n"
+    printf("LORASP: %d,%d,%lf,%d,%d\n"
       "Construct: %lf s. COMM: %lf s.\n"
       "Mat-Vec: %lf s. COMM: %lf s.\n"
       "Factorize: %lf s. COMM: %lf s.\n"
@@ -184,7 +183,7 @@ int main(int argc, char* argv[]) {
       "Vector Memory: %lf GiB.\n"
       "Err: Compress %e, Factor %e\n"
       "Program: %lf s.\n",
-      (int)Nbody, (int)(Nbody / Nleaf), theta, 3, (int)mpi_size, omp_get_max_threads(),
+      (int)Nbody, (int)(Nbody / Nleaf), theta, 3, (int)mpi_size,
       construct_time, construct_comm_time, matvec_time, matvec_comm_time, factor_time, factor_comm_time, 
       solve_time, solve_comm_time, (double)sum_flops * 1.e-9 / factor_time, percent[0], percent[1], percent[2], 
       (double)100 * factor_flops[3] / (sum_flops + factor_flops[3]), (double)100 * sum_flops / (sum_flops + factor_flops[3]),

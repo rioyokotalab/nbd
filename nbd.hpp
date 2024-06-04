@@ -8,6 +8,7 @@
 #include <utility>
 #include <cstdint>
 #include <cstddef>
+#include <complex>
 
 #include <comm.hpp>
 #include <basis.hpp>

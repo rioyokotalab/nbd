@@ -228,7 +228,6 @@ void evalD(const EvalDouble& eval, struct Matrix* D, const CSR* rels, const stru
   content_length(&nodes, NULL, &ibegin, comm);
   ibegin = comm->iGlobal(ibegin);
 
-#pragma omp parallel for
   for (int64_t i = 0; i < nodes; i++) {
     int64_t lc = ibegin + i;
     const struct Cell* ci = &cells[lc];
@@ -254,7 +253,6 @@ void evalS(const EvalDouble& eval, struct Matrix* S, const struct Base* basis, c
   content_length(NULL, NULL, &ibegin, comm);
   int64_t seg = basis->dimS * 3;
 
-#pragma omp parallel for
   for (int64_t x = 0; x < rels->N; x++) {
     int64_t n = basis->DimsLr[x + ibegin];
 
