@@ -431,8 +431,13 @@ void allocNodes(Node A[], double** Workspace, int64_t* Lwork, const Base basis[]
     int64_t dimn_up = i > 0 ? basis[i - 1].dimN : 0;
 
     int64_t stride = dimn * dimn;
-    allocBufferedList((void**)&A[i].A_ptr, (void**)&A[i].A_buf, sizeof(double), stride * nnz);
+    A[i].sizeA = stride * nnz;
+    A[i].sizeU = stride * ulen + n_i * basis[i].dimR;
+    allocBufferedList((void**)&A[i].A_ptr, (void**)&A[i].A_buf, sizeof(double), A[i].sizeA);
     allocBufferedList((void**)&A[i].X_ptr, (void**)&A[i].X_buf, sizeof(double), dimn * ulen);
+    allocBufferedList((void**)&A[i].U_ptr, (void**)&A[i].U_buf, sizeof(double), A[i].sizeU);
+
+    std::copy(basis[i].U_cpu, &basis[i].U_cpu[A[i].sizeU], A[i].U_buf);
 
     int64_t k1, k2;
     countMaxIJ(&k1, &k2, &rels_near[i]);
@@ -501,7 +506,7 @@ void allocNodes(Node A[], double** Workspace, int64_t* Lwork, const Base basis[]
       X_next[x] = &A[i - 1].X_ptr[std::get<1>(p) * basis[i].dimS + std::get<0>(p) * n_next];
     }
 
-    batchParamsCreate(&A[i].params, dimc, dimr, basis[i].U_gpu, A[i].A_ptr, A[i].X_ptr, n_next, &A_next[0], &X_next[0],
+    batchParamsCreate(&A[i].params, dimc, dimr, A[i].U_ptr, A[i].A_ptr, A[i].X_ptr, n_next, &A_next[0], &X_next[0],
       *Workspace, work_size, N_rows, N_cols, ibegin, &rels_near[i].ColIndex[0], &rels_near[i].RowIndex[0]);
   }
 
@@ -520,14 +525,15 @@ void allocNodes(Node A[], double** Workspace, int64_t* Lwork, const Base basis[]
 void node_free(Node* node) {
   freeBufferedList(node->A_ptr, node->A_buf);
   freeBufferedList(node->X_ptr, node->X_buf);
+  freeBufferedList(node->U_ptr, node->U_buf);
   free(node->A);
   batchParamsDestory(&node->params);
 }
 
-void factorA_mov_mem(char dir, Node A[], const Base basis[], int64_t levels) {
+void factorA_mov_mem(Node A[], int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
-    int64_t stride = basis[i].dimN * basis[i].dimN;
-    flushBuffer(dir, A[i].A_ptr, A[i].A_buf, sizeof(double), stride * A[i].lenA);
+    flushBuffer('S', A[i].A_ptr, A[i].A_buf, sizeof(double), A[i].sizeA);
+    flushBuffer('S', A[i].U_ptr, A[i].U_buf, sizeof(double), A[i].sizeU);
   }
 }
 

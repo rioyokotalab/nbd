@@ -23,6 +23,8 @@ public:
   int64_t lenA, lenS;
   Matrix *A, *S;
   double* A_ptr, *A_buf, *X_ptr, *X_buf;
+  double* U_ptr, *U_buf;
+  int64_t sizeA, sizeU;
   BatchedFactorParams params; 
 };
 
@@ -52,4 +54,4 @@ void chol_solve(BatchedFactorParams* params, const CellComm* comm);
 
 void allocNodes(Node A[], double** Workspace, int64_t* Lwork, const Base basis[], const CSR rels_near[], const CSR rels_far[], const CellComm comm[], int64_t levels);
 void node_free(Node* node);
-void factorA_mov_mem(char dir, Node A[], const Base basis[], int64_t levels);
+void factorA_mov_mem(Node A[], int64_t levels);

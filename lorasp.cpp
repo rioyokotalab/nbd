@@ -110,7 +110,7 @@ int main(int argc, char* argv[]) {
   mat_vec_reference(eval, body_local[0], body_local[1], &X1[0], Nbody, body, Xbody);
   solveRelErr(&cerr, X1, X2, lenX);
   
-  factorA_mov_mem('S', nodes, basis, levels);
+  factorA_mov_mem(nodes, levels);
   MPI_Barrier(MPI_COMM_WORLD);
   double factor_time = MPI_Wtime(), factor_comm_time;
 
