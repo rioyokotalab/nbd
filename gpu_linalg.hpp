@@ -16,12 +16,14 @@ public:
   double** ONE_LIST, *ONE_DATA;
 };
 
+class Matrix;
+
 class Node {
 public:
   int64_t lenA, lenS;
-  struct Matrix *A, *S;
+  Matrix *A, *S;
   double* A_ptr, *A_buf, *X_ptr, *X_buf;
-  struct BatchedFactorParams params; 
+  BatchedFactorParams params; 
 };
 
 class Base;

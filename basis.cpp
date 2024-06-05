@@ -40,8 +40,8 @@ int64_t generate_far(int64_t flen, int64_t far[], int64_t ngbs, const int64_t ng
   return flen;
 }
 
-void buildBasis(const EvalDouble& eval, struct Base basis[], struct Cell* cells, const CSR* rel_near, int64_t levels,
-  const struct CellComm* comm, const double* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts, int64_t alignment) {
+void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* rel_near, int64_t levels,
+  const CellComm* comm, const double* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts, int64_t alignment) {
 
   for (int64_t l = levels; l >= 0; l--) {
     int64_t xlen = 0, ibegin = 0, nodes = 0;
@@ -50,7 +50,7 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], struct Cell* cells,
     basis[l].Dims = std::vector<int64_t>(xlen, 0);
     basis[l].DimsLr = std::vector<int64_t>(xlen, 0);
 
-    struct Matrix* arr_m = (struct Matrix*)calloc(xlen * 2, sizeof(struct Matrix));
+    Matrix* arr_m = (Matrix*)calloc(xlen * 2, sizeof(Matrix));
     basis[l].Uo = arr_m;
     basis[l].R = &arr_m[xlen];
     std::vector<int64_t> celli(xlen, 0);
@@ -201,8 +201,8 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], struct Cell* cells,
           Ui_ptr[j] = 1.;
       }
 
-      basis[l].Uo[i] = (struct Matrix) { Uo_ptr, basis[l].dimN, basis[l].dimS, basis[l].dimN };
-      basis[l].R[i] = (struct Matrix) { R_ptr, basis[l].dimS, basis[l].dimS, basis[l].dimS };
+      basis[l].Uo[i] = (Matrix) { Uo_ptr, basis[l].dimN, basis[l].dimS, basis[l].dimN };
+      basis[l].R[i] = (Matrix) { R_ptr, basis[l].dimS, basis[l].dimS, basis[l].dimS };
     }
     neighbor_bcast_cpu(basis[l].M, 3 * basis[l].dimS, &comm[l]);
     dup_bcast_cpu(basis[l].M, 3 * basis[l].dimS * xlen, &comm[l]);
@@ -219,7 +219,7 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], struct Cell* cells,
 }
 
 
-void basis_free(struct Base* basis) {
+void basis_free(Base* basis) {
   free(basis->Uo);
   if (basis->M)
     free(basis->M);

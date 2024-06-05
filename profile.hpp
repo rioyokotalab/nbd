@@ -4,7 +4,8 @@
 #include <cstdint>
 #include <cstddef>
 
-struct Profile {
+class Profile {
+public:
   int64_t gemm_flops = 0;
   int64_t potrf_flops = 0;
   int64_t trsm_flops = 0;

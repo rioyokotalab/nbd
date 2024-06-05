@@ -109,7 +109,7 @@ void get_level_procs(std::vector<std::pair<int64_t, int64_t>>& Procs, std::vecto
   }
 }
 
-void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells, const CSR* cellFar, const CSR* cellNear, int64_t levels) {
+void buildComm(CellComm* comms, int64_t ncells, const Cell* cells, const CSR* cellFar, const CSR* cellNear, int64_t levels) {
   int __mpi_rank = 0, __mpi_size = 1;
   MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
   MPI_Comm_size(MPI_COMM_WORLD, &__mpi_size);
@@ -118,7 +118,7 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
 
   std::vector<MPI_Comm> unique_comms;
   std::vector<std::pair<int64_t, int64_t>> Child(ncells), Procs(ncells), Levels(levels + 1);
-  std::transform(cells, &cells[ncells], Child.begin(), [](const struct Cell& c) {
+  std::transform(cells, &cells[ncells], Child.begin(), [](const Cell& c) {
     return std::make_pair(c.Child[0], c.Child[1] - c.Child[0]);
   });
   get_level_procs(Procs, Levels, mpi_rank, mpi_size, Child, levels);
@@ -228,7 +228,7 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
   }
 }
 
-void cellComm_free(struct CellComm* comms, int64_t levels) {
+void cellComm_free(CellComm* comms, int64_t levels) {
   std::vector<MPI_Comm> mpi_comms;
   std::vector<ncclComm_t> nccl_comms;
 
@@ -266,7 +266,7 @@ void cellComm_free(struct CellComm* comms, int64_t levels) {
     ncclCommDestroy(nccl_comms[i]);
 }
 
-void relations(CSR rels[], const CSR* cellRel, int64_t levels, const struct CellComm* comm) {
+void relations(CSR rels[], const CSR* cellRel, int64_t levels, const CellComm* comm) {
  
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nodes, neighbors, ibegin;
@@ -306,7 +306,7 @@ int64_t CellComm::iGlobal(int64_t ilocal) const {
   return pnx_to_global(local_to_pnx(ilocal, ProcBoxes), ProcBoxes);
 }
 
-void content_length(int64_t* local, int64_t* neighbors, int64_t* local_off, const struct CellComm* comm) {
+void content_length(int64_t* local, int64_t* neighbors, int64_t* local_off, const CellComm* comm) {
   int64_t slen = 0, offset = -1, len_self = -1;
   for (int64_t i = 0; i < (int64_t)comm->ProcBoxes.size(); i++) {
     if (i == comm->Proc)
@@ -321,7 +321,7 @@ void content_length(int64_t* local, int64_t* neighbors, int64_t* local_off, cons
     *local_off = offset;
 }
 
-int64_t neighbor_bcast_sizes_cpu(int64_t* data, const struct CellComm* comm) {
+int64_t neighbor_bcast_sizes_cpu(int64_t* data, const CellComm* comm) {
   int64_t max = 0;
   if (comm->Comm_box.size() > 0 || comm->Comm_share != MPI_COMM_NULL) {
     double start_time = MPI_Wtime();
@@ -345,7 +345,7 @@ int64_t neighbor_bcast_sizes_cpu(int64_t* data, const struct CellComm* comm) {
   return max;
 }
 
-void neighbor_bcast_cpu(double* data, int64_t seg, const struct CellComm* comm) {
+void neighbor_bcast_cpu(double* data, int64_t seg, const CellComm* comm) {
   if (comm->Comm_box.size() > 0) {
     double start_time = MPI_Wtime();
     int64_t y = 0;
@@ -360,7 +360,7 @@ void neighbor_bcast_cpu(double* data, int64_t seg, const struct CellComm* comm) 
   }
 }
 
-void neighbor_reduce_cpu(double* data, int64_t seg, const struct CellComm* comm) {
+void neighbor_reduce_cpu(double* data, int64_t seg, const CellComm* comm) {
   if (comm->Comm_box.size() > 0) {
     double start_time = MPI_Wtime();
     int64_t y = 0;
@@ -378,7 +378,7 @@ void neighbor_reduce_cpu(double* data, int64_t seg, const struct CellComm* comm)
   }
 }
 
-void level_merge_cpu(double* data, int64_t len, const struct CellComm* comm) {
+void level_merge_cpu(double* data, int64_t len, const CellComm* comm) {
   if (comm->Comm_merge != MPI_COMM_NULL) {
     double start_time = MPI_Wtime();
     MPI_Allreduce(MPI_IN_PLACE, data, len, MPI_DOUBLE, MPI_SUM, comm->Comm_merge);
@@ -387,7 +387,7 @@ void level_merge_cpu(double* data, int64_t len, const struct CellComm* comm) {
   }
 }
 
-void dup_bcast_cpu(double* data, int64_t len, const struct CellComm* comm) {
+void dup_bcast_cpu(double* data, int64_t len, const CellComm* comm) {
   if (comm->Comm_share != MPI_COMM_NULL) {
     double start_time = MPI_Wtime();
     MPI_Bcast(data, len, MPI_DOUBLE, 0, comm->Comm_share);
@@ -396,7 +396,7 @@ void dup_bcast_cpu(double* data, int64_t len, const struct CellComm* comm) {
   }
 }
 
-void neighbor_bcast_gpu(double* data, int64_t seg, const struct CellComm* comm) {
+void neighbor_bcast_gpu(double* data, int64_t seg, const CellComm* comm) {
   if (comm->NCCL_box.size() > 0) {
     cudaEvent_t e1, e2;
     if (comm->timer) {
@@ -420,7 +420,7 @@ void neighbor_bcast_gpu(double* data, int64_t seg, const struct CellComm* comm) 
   }
 }
 
-void neighbor_reduce_gpu(double* data, int64_t seg, const struct CellComm* comm) {
+void neighbor_reduce_gpu(double* data, int64_t seg, const CellComm* comm) {
   if (comm->NCCL_box.size() > 0) {
     cudaEvent_t e1, e2;
     if (comm->timer) {
@@ -444,7 +444,7 @@ void neighbor_reduce_gpu(double* data, int64_t seg, const struct CellComm* comm)
   }
 }
 
-void level_merge_gpu(double* data, int64_t len, const struct CellComm* comm) {
+void level_merge_gpu(double* data, int64_t len, const CellComm* comm) {
   if (comm->NCCL_merge != NULL) {
     cudaEvent_t e1, e2;
     if (comm->timer) {
@@ -460,7 +460,7 @@ void level_merge_gpu(double* data, int64_t len, const struct CellComm* comm) {
   }
 }
 
-void dup_bcast_gpu(double* data, int64_t len, const struct CellComm* comm) {
+void dup_bcast_gpu(double* data, int64_t len, const CellComm* comm) {
   if (comm->NCCL_share != NULL) {
     cudaEvent_t e1, e2;
     if (comm->timer) {

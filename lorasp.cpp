@@ -26,19 +26,19 @@ int main(int argc, char* argv[]) {
   int64_t Nleaf = (int64_t)1 << levels;
   int64_t ncells = Nleaf + Nleaf - 1;
   
-  //Laplace3D eval(1.);
+  Laplace3D eval(1.);
   //Yukawa3D eval(1.e-6, 1.);
-  Gaussian eval(20);
+  //Gaussian eval(20);
   
   double* body = (double*)malloc(sizeof(double) * Nbody * 3);
   double* Xbody = (double*)malloc(sizeof(double) * Nbody);
-  struct Cell* cell = (struct Cell*)calloc(ncells, sizeof(struct Cell));
-  struct CSR cellNear, cellFar;
-  struct CSR* rels_far = (struct CSR*)calloc(levels + 1, sizeof(CSR));
-  struct CSR* rels_near = (struct CSR*)calloc(levels + 1, sizeof(CSR));
-  struct CellComm* cell_comm = (struct CellComm*)calloc(levels + 1, sizeof(struct CellComm));
-  struct Base* basis = (struct Base*)calloc(levels + 1, sizeof(struct Base));
-  struct Node* nodes = (struct Node*)malloc(sizeof(struct Node) * (levels + 1));
+  Cell* cell = (Cell*)calloc(ncells, sizeof(Cell));
+  CSR cellNear, cellFar;
+  CSR* rels_far = (CSR*)calloc(levels + 1, sizeof(CSR));
+  CSR* rels_near = (CSR*)calloc(levels + 1, sizeof(CSR));
+  CellComm* cell_comm = (CellComm*)calloc(levels + 1, sizeof(CellComm));
+  Base* basis = (Base*)calloc(levels + 1, sizeof(Base));
+  Node* nodes = (Node*)malloc(sizeof(Node) * (levels + 1));
 
   if (fname == NULL) {
     mesh_unit_sphere(body, Nbody);
@@ -61,7 +61,7 @@ int main(int argc, char* argv[]) {
   traverse('N', &cellNear, ncells, cell, theta);
   traverse('F', &cellFar, ncells, cell, theta);
 
-  struct CommTimer timer;
+  CommTimer timer;
   buildComm(cell_comm, ncells, cell, &cellFar, &cellNear, levels);
   for (int64_t i = 0; i <= levels; i++) {
     cell_comm[i].stream = stream;

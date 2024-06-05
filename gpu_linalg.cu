@@ -264,7 +264,7 @@ void batchParamsDestory(BatchedFactorParams* params) {
     cudaFree(params->ipiv);  
 }
 
-void batchCholeskyFactor(BatchedFactorParams* params, const struct CellComm* comm) {
+void batchCholeskyFactor(BatchedFactorParams* params, const CellComm* comm) {
   int64_t U = params->N_upper, R = params->N_r, S = params->N_s, N = R + S, D = params->L_diag;
   double one = 1., zero = 0., minus_one = -1.;
   int info_host = 0;
@@ -310,7 +310,7 @@ void batchCholeskyFactor(BatchedFactorParams* params, const struct CellComm* com
   }
 }
 
-void batchForwardULV(BatchedFactorParams* params, const struct CellComm* comm) {
+void batchForwardULV(BatchedFactorParams* params, const CellComm* comm) {
   int64_t R = params->N_r, S = params->N_s, N = R + S, D = params->L_diag, ONE = 1;
   int64_t K = params->Kfwd;
   double one = 1., zero = 0., minus_one = -1.;
@@ -340,7 +340,7 @@ void batchForwardULV(BatchedFactorParams* params, const struct CellComm* comm) {
     params->ACC_data, N, N * K, params->ONE_DATA, K, 0, &one, params->X_data, R, R, params->L_rows);
 }
 
-void batchBackwardULV(BatchedFactorParams* params, const struct CellComm* comm) {
+void batchBackwardULV(BatchedFactorParams* params, const CellComm* comm) {
   int64_t R = params->N_r, S = params->N_s, N = R + S, D = params->L_diag, ONE = 1;
   int64_t K = params->Kback;
   double one = 1., zero = 0., minus_one = -1.;
@@ -390,7 +390,7 @@ void lastParamsCreate(BatchedFactorParams* params, double* A, double* X, int64_t
   cudaMalloc((void**)&params->info, sizeof(int));
 }
 
-void chol_decomp(BatchedFactorParams* params, const struct CellComm* comm) {
+void chol_decomp(BatchedFactorParams* params, const CellComm* comm) {
   double* A = params->A_data;
   int64_t N = params->N_r;
   double one = 1.;
@@ -401,7 +401,7 @@ void chol_decomp(BatchedFactorParams* params, const struct CellComm* comm) {
 
 }
 
-void chol_solve(BatchedFactorParams* params, const struct CellComm* comm) {
+void chol_solve(BatchedFactorParams* params, const CellComm* comm) {
   const double* A = params->A_data;
   double* X = params->X_data;
   int64_t N = params->N_r;
@@ -410,7 +410,7 @@ void chol_solve(BatchedFactorParams* params, const struct CellComm* comm) {
   cusolverDnDgetrs(cusolverH, CUBLAS_OP_N, N, 1, A, N, params->ipiv, X, N, params->info);
 }
 
-void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struct Base basis[], const CSR rels_near[], const CSR rels_far[], const struct CellComm comm[], int64_t levels) {
+void allocNodes(Node A[], double** Workspace, int64_t* Lwork, const Base basis[], const CSR rels_near[], const CSR rels_far[], const CellComm comm[], int64_t levels) {
   int64_t work_size = 0;
 
   for (int64_t i = levels; i >= 0; i--) {
@@ -419,7 +419,7 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
     int64_t nnz = rels_near[i].RowIndex[n_i];
     int64_t nnz_f = rels_far[i].RowIndex[n_i];
 
-    struct Matrix* arr_m = (struct Matrix*)malloc(sizeof(struct Matrix) * (nnz + nnz_f));
+    Matrix* arr_m = (Matrix*)malloc(sizeof(Matrix) * (nnz + nnz_f));
     A[i].A = arr_m;
     A[i].S = &arr_m[nnz];
     A[i].lenA = nnz;
@@ -440,10 +440,10 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
 
     for (int64_t x = 0; x < n_i; x++) {
       for (int64_t yx = rels_near[i].RowIndex[x]; yx < rels_near[i].RowIndex[x + 1]; yx++)
-        arr_m[yx] = (struct Matrix) { &A[i].A_buf[yx * stride], dimn, dimn, dimn }; // A
+        arr_m[yx] = (Matrix) { &A[i].A_buf[yx * stride], dimn, dimn, dimn }; // A
 
       for (int64_t yx = rels_far[i].RowIndex[x]; yx < rels_far[i].RowIndex[x + 1]; yx++)
-        arr_m[yx + nnz] = (struct Matrix) { NULL, basis[i].dimS, basis[i].dimS, dimn_up }; // S
+        arr_m[yx + nnz] = (Matrix) { NULL, basis[i].dimS, basis[i].dimS, dimn_up }; // S
     }
 
     if (i < levels) {
@@ -515,14 +515,14 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
   lastParamsCreate(&A[0].params, A[0].A_ptr, A[0].X_ptr, basis[0].dimN, low_s, cdims.size(), &cdims[0]);
 }
 
-void node_free(struct Node* node) {
+void node_free(Node* node) {
   freeBufferedList(node->A_ptr, node->A_buf);
   freeBufferedList(node->X_ptr, node->X_buf);
   free(node->A);
   batchParamsDestory(&node->params);
 }
 
-void factorA_mov_mem(char dir, struct Node A[], const struct Base basis[], int64_t levels) {
+void factorA_mov_mem(char dir, Node A[], const Base basis[], int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t stride = basis[i].dimN * basis[i].dimN;
     flushBuffer(dir, A[i].A_ptr, A[i].A_buf, sizeof(double), stride * A[i].lenA);
