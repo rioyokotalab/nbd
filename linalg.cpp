@@ -1,5 +1,5 @@
 
-#include <nbd.hpp>
+#include <linalg.hpp>
 #include <kernel.hpp>
 
 #include "mkl.h"

@@ -1,7 +1,12 @@
 
+#include <basis.hpp>
+#include <build_tree.hpp>
+#include <comm.hpp>
+#include <gpu_linalg.hpp>
+#include <linalg.hpp>
+#include <umv.hpp>
 #include <geometry.hpp>
 #include <kernel.hpp>
-#include <nbd.hpp>
 #include <profile.hpp>
 
 #include <stdio.h>
@@ -52,7 +57,6 @@ int main(int argc, char* argv[]) {
   else {
     int64_t* buckets = (int64_t*)malloc(sizeof(int64_t) * Nleaf);
     read_sorted_bodies(&Nbody, Nleaf, body, buckets, fname);
-    //buildTreeBuckets(cell, body, buckets, levels);
     buildTree(&ncells, cell, body, Nbody, levels);
     free(buckets);
   }
@@ -94,23 +98,17 @@ int main(int argc, char* argv[]) {
   double* X1 = (double*)calloc(lenX, sizeof(double));
   double* X2 = (double*)calloc(lenX, sizeof(double));
 
-  loadX(X1, basis[levels].dimN, Xbody, 0, llen, &cell[gbegin]);
+  loadX(X2, basis[levels].dimN, Xbody, 0, llen, &cell[gbegin]);
   double matvec_time = MPI_Wtime(), matvec_comm_time;
-  matVecA(nodes, basis, rels_near, X1, cell_comm, levels);
+  matVecA(nodes, basis, rels_near, X2, cell_comm, levels);
 
   matvec_time = MPI_Wtime() - matvec_time;
   matvec_comm_time = timer.get_comm_timing();
 
   double cerr = 0.;
-  if (Nbody < 20000) {
-    int64_t body_local[2] = { cell[gbegin].Body[0], cell[gbegin + llen - 1].Body[1] };
-    std::vector<double> X3(lenX, 0);
-    mat_vec_reference(eval, body_local[0], body_local[1], &X3[0], Nbody, body, Xbody);
-    loadX(X2, basis[levels].dimN, &X3[0], body_local[0], llen, &cell[gbegin]);
-
-    solveRelErr(&cerr, X1, X2, lenX);
-    std::iter_swap(&X1, &X2);
-  }
+  int64_t body_local[2] = { cell[gbegin].Body[0], cell[gbegin + llen - 1].Body[1] };
+  mat_vec_reference(eval, body_local[0], body_local[1], &X1[0], Nbody, body, Xbody);
+  solveRelErr(&cerr, X1, X2, lenX);
   
   factorA_mov_mem('S', nodes, basis, levels);
   MPI_Barrier(MPI_COMM_WORLD);

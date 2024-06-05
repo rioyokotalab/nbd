@@ -1,7 +1,9 @@
 
 #include <gpu_linalg.hpp>
+#include <linalg.hpp>
+#include <build_tree.hpp>
+#include <basis.hpp>
 #include <comm.hpp>
-#include <nbd.hpp>
 
 #include "cuda.h"
 #include "cublas_v2.h"

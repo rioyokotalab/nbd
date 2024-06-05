@@ -1,4 +1,9 @@
-#include <nbd.hpp>
+
+#include <build_tree.hpp>
+#include <kernel.hpp>
+#include <linalg.hpp>
+#include <comm.hpp>
+#include <basis.hpp>
 
 #include <cstdio>
 #include <cstdlib>
@@ -124,33 +129,6 @@ void buildTree(int64_t* ncells, Cell* cells, double* bodies, int64_t nbodies, in
   *ncells = len;
 }
 
-void buildTreeBuckets(Cell* cells, const double* bodies, const int64_t buckets[], int64_t levels) {
-  int64_t nleaf = (int64_t)1 << levels;
-  int64_t count = 0;
-  for (int64_t i = 0; i < nleaf; i++) {
-    int64_t ci = i + nleaf - 1;
-    cells[ci].Child[0] = -1;
-    cells[ci].Child[1] = -1;
-    cells[ci].Body[0] = count;
-    cells[ci].Body[1] = count + buckets[i];
-    cells[ci].Level = levels;
-    get_bounds(&bodies[count * 3], buckets[i], cells[ci].R, cells[ci].C);
-    count = count + buckets[i];
-  }
-
-  for (int64_t i = nleaf - 2; i >= 0; i--) {
-    int64_t c0 = (i << 1) + 1;
-    int64_t c1 = (i << 1) + 2;
-    int64_t begin = cells[c0].Body[0];
-    int64_t len = cells[c1].Body[1] - begin;
-    cells[i].Child[0] = c0;
-    cells[i].Child[1] = c0 + 2;
-    cells[i].Body[0] = begin;
-    cells[i].Body[1] = begin + len;
-    cells[i].Level = cells[c0].Level - 1;
-    get_bounds(&bodies[begin * 3], len, cells[i].R, cells[i].C);
-  }
-}
 void getList(char NoF, int64_t* len, int64_t rels[], int64_t ncells, const Cell cells[], int64_t i, int64_t j, double theta) {
   const Cell* Ci = &cells[i];
   const Cell* Cj = &cells[j];

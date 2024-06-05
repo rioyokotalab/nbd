@@ -1,6 +1,10 @@
 
-#include <nbd.hpp>
+#include <basis.hpp>
+#include <linalg.hpp>
+#include <comm.hpp>
+#include <build_tree.hpp>
 
+#include <cuda_runtime_api.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
