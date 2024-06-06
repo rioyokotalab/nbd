@@ -49,7 +49,7 @@ void gen_matrix(const EvalDouble& Eval, int64_t m, int64_t n, const double* bi, 
   });
 }
 
-int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int64_t rank_max, 
+void compute_basis(const EvalDouble& eval, int64_t rank_max, 
   int64_t M, double* A, int64_t LDA, double Xbodies[], int64_t Nclose, const double Cbodies[], int64_t Nfar, const double Fbodies[]) {
 
   if (M > 0 && (Nclose > 0 || Nfar > 0)) {
@@ -59,23 +59,12 @@ int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int6
     gen_matrix(eval, Nclose, M, Cbodies, Xbodies, &Aall[0], ldm);
     gen_matrix(eval, Nfar, M, Fbodies, Xbodies, &Aall[Nclose], ldm);
 
-    for (int64_t i = 0; i < Nclose; i += M) {
-      int64_t len = std::min(M, Nclose - i);
-      gen_matrix(eval, len, len, &Cbodies[i * 3], &Cbodies[i * 3], &U[0], M);
-      //LAPACKE_dgesv(LAPACK_COL_MAJOR, len, M, &U[0], M, &ipiv[0], &Aall[i], ldm);
-    }
-
     std::fill(ipiv.begin(), ipiv.end(), 0);
     LAPACKE_dgeqp3(LAPACK_COL_MAJOR, Nclose + Nfar, M, &Aall[0], ldm, &ipiv[0], &S[0]);
     LAPACKE_dlaset(LAPACK_COL_MAJOR, 'L', M - 1, M - 1, 0., 0., &Aall[1], ldm);
 
     LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'N', 'A', M, M, &Aall[0], ldm, &S[0], NULL, M, &U[0], M, &S[M]);
-    double s0 = S[0] * epi;
-    rank_max = rank_max <= 0 ? M : std::min(rank_max, M);
-    rank_min = rank_min <= 0 ? 0 : std::min(rank_min, M);
-    int64_t rank = epi > 0. ?
-      std::distance(S.begin(), std::find_if(S.begin() + rank_min, S.begin() + rank_max, [s0](double& s) { return s < s0; })) : rank_max;
-    
+    int64_t rank = rank_max <= 0 ? M : std::min(rank_max, M);    
     if (rank > 0) {
       if (rank < M)
         LAPACKE_dgesv(LAPACK_COL_MAJOR, rank, M - rank, &U[0], M, (long long*)&S[0], &U[rank * M], M);
@@ -98,10 +87,7 @@ int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int6
       for (int64_t i = 0; i < rank; i++)
         vdMul(rank, &S[0], &U[i * M], &A[(M + i) * LDA]);
     }
-    
-    return rank;
   }
-  return 0;
 }
 
 

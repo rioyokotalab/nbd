@@ -4,7 +4,6 @@
 #include <comm.hpp>
 #include <build_tree.hpp>
 
-#include <cuda_runtime_api.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
@@ -45,7 +44,7 @@ int64_t generate_far(int64_t flen, int64_t far[], int64_t ngbs, const int64_t ng
 }
 
 void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* rel_near, int64_t levels,
-  const CellComm* comm, const double* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts, int64_t alignment) {
+  const CellComm* comm, const double* bodies, int64_t nbodies, int64_t mrank, int64_t sp_pts, int64_t alignment) {
 
   for (int64_t l = levels; l >= 0; l--) {
     int64_t xlen = 0, ibegin = 0, nodes = 0;
@@ -134,9 +133,8 @@ void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* re
         for (int64_t k = 0; k < 3; k++)
           Fbodies[j * 3 + k] = bodies[remote[j] * 3 + k];
       
-      //int64_t rank = compute_basis(eval, epi, 1, mrank, ske_len, mat, seg_dim, &Xbodies[0], 0, &Cbodies[0], Fbodies.size() / 3, &Fbodies[0]);
-      int64_t rank = compute_basis(eval, epi, 1, mrank, ske_len, mat, seg_dim, &Xbodies[0], Cbodies.size() / 3, &Cbodies[0], Fbodies.size() / 3, &Fbodies[0]);
-      basis[l].DimsLr[i + ibegin] = rank;
+      compute_basis(eval, mrank, ske_len, mat, seg_dim, &Xbodies[0], Cbodies.size() / 3, &Cbodies[0], Fbodies.size() / 3, &Fbodies[0]);
+      basis[l].DimsLr[i + ibegin] = std::min(mrank, ske_len);
     }
     neighbor_bcast_sizes_cpu(basis[l].DimsLr.data(), &comm[l]);
 
@@ -163,16 +161,12 @@ void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* re
     int64_t LD = basis[l].dimN;
 
     basis[l].M = (double*)calloc(basis[l].dimS * xlen * 3, sizeof(double));
-    basis[l].U_cpu = (double*)calloc(stride * xlen + nodes * basis[l].dimR, sizeof(double));
+    basis[l].U = (double*)calloc(stride * xlen + nodes * basis[l].dimR, sizeof(double));
     basis[l].R_cpu = (double*)calloc(stride_r * xlen, sizeof(double));
-    if (cudaMalloc(&basis[l].U_gpu, sizeof(double) * (stride * xlen + nodes * basis[l].dimR)) != cudaSuccess)
-      basis[l].U_gpu = NULL;
-    if (cudaMalloc(&basis[l].R_gpu, sizeof(double) * stride_r * xlen) != cudaSuccess)
-      basis[l].R_gpu = NULL;
 
     for (int64_t i = 0; i < xlen; i++) {
       double* M_ptr = basis[l].M + i * basis[l].dimS * 3;
-      double* Uc_ptr = basis[l].U_cpu + i * stride;
+      double* Uc_ptr = basis[l].U + i * stride;
       double* Uo_ptr = Uc_ptr + basis[l].dimR * basis[l].dimN;
       double* R_ptr = basis[l].R_cpu + i * stride_r;
 
@@ -200,7 +194,7 @@ void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* re
         memcpy2d(R_ptr, &matrix_data[(i - ibegin) * seg_matrix + M * seg_dim], No, No, basis[l].dimS, seg_dim);
         memcpy(M_ptr, &Skeletons[i * seg_skeletons], 3 * No * sizeof(double));
 
-        double* Ui_ptr = basis[l].U_cpu + xlen * stride + (i - ibegin) * basis[l].dimR; 
+        double* Ui_ptr = basis[l].U + xlen * stride + (i - ibegin) * basis[l].dimR; 
         for (int64_t j = Nc; j < basis[l].dimR; j++)
           Ui_ptr[j] = 1.;
       }
@@ -210,15 +204,10 @@ void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* re
     }
     neighbor_bcast_cpu(basis[l].M, 3 * basis[l].dimS, &comm[l]);
     dup_bcast_cpu(basis[l].M, 3 * basis[l].dimS * xlen, &comm[l]);
-    neighbor_bcast_cpu(basis[l].U_cpu, stride, &comm[l]);
-    dup_bcast_cpu(basis[l].U_cpu, stride * xlen, &comm[l]);
+    neighbor_bcast_cpu(basis[l].U, stride, &comm[l]);
+    dup_bcast_cpu(basis[l].U, stride * xlen, &comm[l]);
     neighbor_bcast_cpu(basis[l].R_cpu, stride_r, &comm[l]);
     dup_bcast_cpu(basis[l].R_cpu, stride_r * xlen, &comm[l]);
-
-    if (basis[l].U_gpu)
-      cudaMemcpy(basis[l].U_gpu, basis[l].U_cpu, sizeof(double) * (stride * xlen + nodes * basis[l].dimR), cudaMemcpyHostToDevice);
-    if (basis[l].R_gpu)
-      cudaMemcpy(basis[l].R_gpu, basis[l].R_cpu, sizeof(double) * stride_r * xlen, cudaMemcpyHostToDevice);
   }
 }
 
@@ -227,12 +216,8 @@ void basis_free(Base* basis) {
   free(basis->Uo);
   if (basis->M)
     free(basis->M);
-  if (basis->U_cpu)
-    free(basis->U_cpu);
-  if (basis->U_gpu)
-    cudaFree(basis->U_gpu);
+  if (basis->U)
+    free(basis->U);
   if (basis->R_cpu)
     free(basis->R_cpu);
-  if (basis->R_gpu)
-    cudaFree(basis->R_gpu);
 }

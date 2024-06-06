@@ -437,7 +437,7 @@ void allocNodes(Node A[], double** Workspace, int64_t* Lwork, const Base basis[]
     allocBufferedList((void**)&A[i].X_ptr, (void**)&A[i].X_buf, sizeof(double), dimn * ulen);
     allocBufferedList((void**)&A[i].U_ptr, (void**)&A[i].U_buf, sizeof(double), A[i].sizeU);
 
-    std::copy(basis[i].U_cpu, &basis[i].U_cpu[A[i].sizeU], A[i].U_buf);
+    std::copy(basis[i].U, &basis[i].U[A[i].sizeU], A[i].U_buf);
 
     int64_t k1, k2;
     countMaxIJ(&k1, &k2, &rels_near[i]);

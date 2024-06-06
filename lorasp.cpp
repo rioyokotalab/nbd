@@ -21,10 +21,9 @@ int main(int argc, char* argv[]) {
   int64_t Nbody = argc > 1 ? atol(argv[1]) : 8192;
   double theta = argc > 2 ? atof(argv[2]) : 1e0;
   int64_t leaf_size = argc > 3 ? atol(argv[3]) : 256;
-  double epi = argc > 4 ? atof(argv[4]) : 1e-10;
-  int64_t rank_max = argc > 5 ? atol(argv[5]) : 100;
-  int64_t sp_pts = argc > 6 ? atol(argv[6]) : 2000;
-  const char* fname = argc > 7 ? argv[7] : NULL;
+  int64_t rank_max = argc > 4 ? atol(argv[4]) : 100;
+  int64_t sp_pts = argc > 5 ? atol(argv[5]) : Nbody;
+  const char* fname = argc > 6 ? argv[6] : NULL;
 
   leaf_size = Nbody < leaf_size ? Nbody : leaf_size;
   int64_t levels = (int64_t)log2((double)Nbody / leaf_size);
@@ -80,7 +79,7 @@ int main(int argc, char* argv[]) {
 
   MPI_Barrier(MPI_COMM_WORLD);
   double construct_time = MPI_Wtime(), construct_comm_time;
-  buildBasis(eval, basis, cell, &cellNear, levels, cell_comm, body, Nbody, epi, rank_max, sp_pts, 4);
+  buildBasis(eval, basis, cell, &cellNear, levels, cell_comm, body, Nbody, rank_max, sp_pts, 4);
 
   MPI_Barrier(MPI_COMM_WORLD);
   construct_time = MPI_Wtime() - construct_time;
