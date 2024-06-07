@@ -12,9 +12,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <cstring>
 
 int main(int argc, char* argv[]) {
-  cudaStream_t stream = (cudaStream_t)init_libs(&argc, &argv);
+  init_libs(&argc, &argv);
 
   double prog_time = MPI_Wtime();
 
@@ -67,7 +68,6 @@ int main(int argc, char* argv[]) {
   CommTimer timer;
   buildComm(cell_comm, ncells, cell, &cellFar, &cellNear, levels);
   for (int64_t i = 0; i <= levels; i++) {
-    cell_comm[i].stream = stream;
     cell_comm[i].timer = &timer;
   }
   relations(rels_near, &cellNear, levels, cell_comm);
@@ -109,7 +109,6 @@ int main(int argc, char* argv[]) {
   mat_vec_reference(eval, body_local[0], body_local[1], &X1[0], Nbody, body, Xbody);
   solveRelErr(&cerr, X1, X2, lenX);
   
-  factorA_mov_mem(nodes, levels);
   MPI_Barrier(MPI_COMM_WORLD);
   double factor_time = MPI_Wtime(), factor_comm_time;
 
@@ -117,7 +116,6 @@ int main(int argc, char* argv[]) {
     batchCholeskyFactor(&nodes[i].params, &cell_comm[i]);
   chol_decomp(&nodes[0].params, &cell_comm[0]);
 
-  cudaStreamSynchronize(stream);
   MPI_Barrier(MPI_COMM_WORLD);
 
   factor_time = MPI_Wtime() - factor_time;
@@ -137,7 +135,7 @@ int main(int argc, char* argv[]) {
   for (int i = 0; i < 3; i++)
     percent[i] = (double)factor_flops[i] / (double)sum_flops * (double)100;
 
-  cudaMemcpy(&nodes[levels].X_ptr[lbegin * basis[levels].dimN], X1, lenX * sizeof(double), cudaMemcpyHostToDevice);
+  memcpy(&nodes[levels].X_ptr[lbegin * basis[levels].dimN], X1, lenX * sizeof(double));
 
   MPI_Barrier(MPI_COMM_WORLD);
   double solve_time = MPI_Wtime(), solve_comm_time;
@@ -148,13 +146,12 @@ int main(int argc, char* argv[]) {
   for (int64_t i = 1; i <= levels; i++)
     batchBackwardULV(&nodes[i].params, &cell_comm[i]);
 
-  cudaStreamSynchronize(stream);
   MPI_Barrier(MPI_COMM_WORLD);
 
   solve_time = MPI_Wtime() - solve_time;
   solve_comm_time = timer.get_comm_timing();
 
-  cudaMemcpy(X1, &nodes[levels].X_ptr[lbegin * basis[levels].dimN], lenX * sizeof(double), cudaMemcpyDeviceToHost);
+  memcpy(X1, &nodes[levels].X_ptr[lbegin * basis[levels].dimN], lenX * sizeof(double));
 
   loadX(X2, basis[levels].dimN, Xbody, 0, llen, &cell[gbegin]);
   double err;
