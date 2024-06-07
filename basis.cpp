@@ -57,16 +57,21 @@ void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* re
     basis[l].Uo = arr_m;
     basis[l].R = &arr_m[xlen];
     std::vector<int64_t> celli(xlen, 0);
+    basis[l].LocalChild = std::vector<std::pair<int64_t, int64_t>>(xlen, std::make_pair(-1, -1));
+    basis[l].LocalParent = std::vector<std::pair<int64_t, int64_t>>(xlen, std::make_pair(-1, -1));
 
     for (int64_t i = 0; i < xlen; i++) {
-      int64_t childi = std::get<0>(comm[l].LocalChild[i]);
-      int64_t clen = std::get<1>(comm[l].LocalChild[i]);
       int64_t gi = comm[l].iGlobal(i);
+      int64_t childi = l < levels ? comm[l + 1].iLocal(cells[gi].Child[0]) : -1;
+      int64_t clen = cells[gi].Child[1] - cells[gi].Child[0];
       celli[i] = gi;
+      basis[l].LocalChild[i] = std::make_pair(childi, clen);
 
       if (childi >= 0 && l < levels)
-        for (int64_t j = 0; j < clen; j++)
+        for (int64_t j = 0; j < clen; j++) {
           basis[l].Dims[i] = basis[l].Dims[i] + basis[l + 1].DimsLr[childi + j];
+          basis[l + 1].LocalParent[childi + j] = std::make_pair(i, j);
+        }
       else
         basis[l].Dims[i] = cells[celli[i]].Body[1] - cells[celli[i]].Body[0];
     }
@@ -80,8 +85,9 @@ void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* re
     if (l < levels) {
       int64_t seg = basis[l + 1].dimS;
       for (int64_t i = 0; i < nodes; i++) {
-        int64_t childi = std::get<0>(comm[l].LocalChild[i + ibegin]);
-        int64_t clen = std::get<1>(comm[l].LocalChild[i + ibegin]);
+        int64_t gi = celli[i + ibegin];
+        int64_t childi = l < levels ? comm[l + 1].iLocal(cells[gi].Child[0]) : -1;
+        int64_t clen = cells[gi].Child[1] - cells[gi].Child[0];
         int64_t y = 0;
         for (int64_t j = 0; j < clen; j++) {
           int64_t len = basis[l + 1].DimsLr[childi + j];
@@ -145,11 +151,14 @@ void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* re
       int64_t rem1 = i1 & (alignment - 1);
       int64_t rem2 = i2 & (alignment - 1);
 
+      int64_t gi = celli[i];
+      int64_t clen = cells[gi].Child[1] - cells[gi].Child[0];
+
       i1 = std::max(alignment, i1 - rem1 + (rem1 ? alignment : 0));
       i2 = std::max(alignment, i2 - rem2 + (rem2 ? alignment : 0));
       max[0] = std::max(max[0], i1);
       max[1] = std::max(max[1], i2);
-      max[2] = std::max(max[2], std::get<1>(comm[l].LocalChild[i]));
+      max[2] = std::max(max[2], clen);
     }
     MPI_Allreduce(MPI_IN_PLACE, max, 3, MPI_INT64_T, MPI_MAX, MPI_COMM_WORLD);
 
@@ -175,12 +184,13 @@ void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* re
       int64_t M = basis[l].Dims[i];
 
       if (ibegin <= i && i < iend) {
-        int64_t child = std::get<0>(comm[l].LocalChild[i]);
-        int64_t clen = std::get<1>(comm[l].LocalChild[i]);
-        if (child >= 0 && l < levels) {
+        int64_t gi = celli[i];
+        int64_t childi = l < levels ? comm[l + 1].iLocal(cells[gi].Child[0]) : -1;
+        int64_t clen = cells[gi].Child[1] - cells[gi].Child[0];
+        if (childi >= 0 && l < levels) {
           int64_t row = 0;
           for (int64_t j = 0; j < clen; j++) {
-            int64_t N = basis[l + 1].DimsLr[child + j];
+            int64_t N = basis[l + 1].DimsLr[childi + j];
             int64_t Urow = j * basis[l + 1].dimS;
             memcpy2d(&Uc_ptr[Urow], &matrix_data[(i - ibegin) * seg_matrix + No * seg_dim + row], N, Nc, LD, seg_dim);
             memcpy2d(&Uo_ptr[Urow], &matrix_data[(i - ibegin) * seg_matrix + row], N, No, LD, seg_dim);

@@ -29,7 +29,7 @@ void allocRightHandSidesMV(RightHandSides rhs[], const Base base[], const CellCo
     int64_t len_data = len * base[l].dimN * 2;
     double* data = (double*)calloc(len_data, sizeof(double));
     for (int64_t i = 0; i < len; i++) {
-      std::pair<int64_t, int64_t> p = comm[l].LocalParent[i];
+      std::pair<int64_t, int64_t> p = base[l].LocalParent[i];
       arr_m[i] = (Matrix) { &data[i * base[l].dimN], base[l].dimN, 1, base[l].dimN }; // X
       arr_m[i + len] = (Matrix) { &data[len * base[l].dimN + i * base[l].dimN], base[l].dimN, 1, base[l].dimN }; // B
 

@@ -13,7 +13,8 @@ public:
   int64_t dimR, dimS, dimN;
   std::vector<int64_t> Dims, DimsLr;
   Matrix *Uo, *R;
-  double *M, *U, *R_cpu; 
+  double *M, *U, *R_cpu;
+  std::vector<std::pair<int64_t, int64_t>> LocalChild, LocalParent;
 };
 
 class EvalDouble;

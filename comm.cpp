@@ -173,25 +173,6 @@ void buildComm(CellComm* comms, int64_t ncells, const Cell* cells, const CSR* ce
       MPI_Bcast(&comms[i].ProcBoxes[j], sizeof(std::pair<int64_t, int64_t>), MPI_BYTE, std::get<0>(comms[i].Comm_box[j]), std::get<1>(comms[i].Comm_box[j]));
     if (comms[i].Comm_share != MPI_COMM_NULL)
       MPI_Bcast(&comms[i].ProcBoxes[0], sizeof(std::pair<int64_t, int64_t>) * comms[i].ProcBoxes.size(), MPI_BYTE, 0, comms[i].Comm_share);
-
-    for (int64_t j = 0; j < (int64_t)comms[i].ProcBoxes.size(); j++)
-      for (int64_t k = 0; k < std::get<1>(comms[i].ProcBoxes[j]); k++) {
-        int64_t ki = k + std::get<0>(comms[i].ProcBoxes[j]);
-        int64_t li = pnx_to_local(std::make_pair(j, k), comms[i].ProcBoxes);
-        int64_t lc = std::get<0>(Child[ki]);
-        int64_t lclen = std::get<1>(Child[ki]);
-        if (i < levels) {
-          std::pair<int64_t, int64_t> pnx = global_to_pnx(lc, comms[i + 1].ProcBoxes);
-          lc = pnx_to_local(pnx, comms[i + 1].ProcBoxes);
-          if (lc >= 0)
-            std::for_each(comms[i + 1].LocalParent.begin() + lc, comms[i + 1].LocalParent.begin() + (lc + lclen), 
-              [&](std::pair<int64_t, int64_t>& x) { std::get<0>(x) = li; std::get<1>(x) = std::distance(&comms[i + 1].LocalParent[lc], &x); });
-          else
-            lclen = 0;
-        }
-        comms[i].LocalChild.emplace_back(lc, lclen);
-      }
-    comms[i].LocalParent = std::vector<std::pair<int64_t, int64_t>>(comms[i].LocalChild.size(), std::make_pair(-1, -1));
   }
 }
 

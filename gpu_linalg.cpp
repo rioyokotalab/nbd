@@ -421,13 +421,13 @@ void allocNodes(Node A[], double** Workspace, int64_t* Lwork, const Base basis[]
       int64_t seg = basis[i + 1].dimS;
 
       for (int64_t j = 0; j < rels_near[i].N; j++) {
-        int64_t x0 = std::get<0>(comm[i].LocalChild[j + nloc]) - ploc;
-        int64_t lenx = std::get<1>(comm[i].LocalChild[j + nloc]);
+        int64_t x0 = std::get<0>(basis[i].LocalChild[j + nloc]) - ploc;
+        int64_t lenx = std::get<1>(basis[i].LocalChild[j + nloc]);
 
         for (int64_t ij = rels_near[i].RowIndex[j]; ij < rels_near[i].RowIndex[j + 1]; ij++) {
           int64_t li = rels_near[i].ColIndex[ij];
-          int64_t y0 = std::get<0>(comm[i].LocalChild[li]);
-          int64_t leny = std::get<1>(comm[i].LocalChild[li]);
+          int64_t y0 = std::get<0>(basis[i].LocalChild[li]);
+          int64_t leny = std::get<1>(basis[i].LocalChild[li]);
           
           for (int64_t x = 0; x < lenx; x++)
             if ((x + x0) >= 0 && (x + x0) < rels_far[i + 1].N)
@@ -456,15 +456,15 @@ void allocNodes(Node A[], double** Workspace, int64_t* Lwork, const Base basis[]
     for (int64_t x = 0; x < N_cols; x++)
       for (int64_t yx = rels_near[i].RowIndex[x]; yx < rels_near[i].RowIndex[x + 1]; yx++) {
         int64_t y = rels_near[i].ColIndex[yx];
-        std::pair<int64_t, int64_t> px = comm[i].LocalParent[x + ibegin];
-        std::pair<int64_t, int64_t> py = comm[i].LocalParent[y];
+        std::pair<int64_t, int64_t> px = basis[i].LocalParent[x + ibegin];
+        std::pair<int64_t, int64_t> py = basis[i].LocalParent[y];
         int64_t ij = rels_near[i - 1].lookupIJ(std::get<0>(py), std::get<0>(px) - ibegin_next);
         A_next[yx] = &A[i - 1].A_ptr[(std::get<1>(py) * n_next + std::get<1>(px)) * basis[i].dimS + ij * n_next * n_next];
       }
 
     std::vector<double*> X_next(N_rows);
     for (int64_t x = 0; x < N_rows; x++) { 
-      std::pair<int64_t, int64_t> p = comm[i].LocalParent[x];
+      std::pair<int64_t, int64_t> p = basis[i].LocalParent[x];
       X_next[x] = &A[i - 1].X_ptr[std::get<1>(p) * basis[i].dimS + std::get<0>(p) * n_next];
     }
 
@@ -472,8 +472,8 @@ void allocNodes(Node A[], double** Workspace, int64_t* Lwork, const Base basis[]
       *Workspace, work_size, N_rows, N_cols, ibegin, &rels_near[i].ColIndex[0], &rels_near[i].RowIndex[0]);
   }
 
-  int64_t child = std::get<0>(comm[0].LocalChild[0]);
-  int64_t clen = std::get<1>(comm[0].LocalChild[0]);
+  int64_t child = std::get<0>(basis[0].LocalChild[0]);
+  int64_t clen = std::get<1>(basis[0].LocalChild[0]);
   std::vector<int64_t> cdims(clen);
   if (child >= 0)
     for (int64_t i = 0; i < clen; i++)

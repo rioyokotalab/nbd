@@ -28,7 +28,6 @@ class CellComm {
 public:
   int64_t Proc;
   std::vector<std::pair<int64_t, int64_t>> ProcBoxes;
-  std::vector<std::pair<int64_t, int64_t>> LocalChild, LocalParent;
   
   std::vector<std::pair<int, MPI_Comm>> Comm_box;
   MPI_Comm Comm_share, Comm_merge;
