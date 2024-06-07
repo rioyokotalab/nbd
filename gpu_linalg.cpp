@@ -12,16 +12,6 @@
 #include <cstring>
 #include "mkl.h"
 
-void init_libs(int* argc, char*** argv) {
-  if (MPI_Init(argc, argv) != MPI_SUCCESS)
-    fprintf(stderr, "MPI Init Error\n");
-}
-
-void fin_libs() {
-
-  MPI_Finalize();
-}
-
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE) {
   if (Lwork > *D_DATA_SIZE) {
     *D_DATA_SIZE = Lwork;
@@ -406,13 +396,10 @@ void allocNodes(Node A[], double** Workspace, int64_t* Lwork, const Base basis[]
     A[i].sizeA = stride * nnz;
     A[i].sizeU = stride * ulen + n_i * basis[i].dimR;
     A[i].A_ptr = (double*)calloc(A[i].sizeA, sizeof(double));
-    A[i].A_buf = A[i].A_ptr;
     A[i].X_ptr = (double*)calloc(dimn * ulen, sizeof(double));
-    A[i].X_buf = A[i].X_ptr;
     A[i].U_ptr = (double*)calloc(A[i].sizeU, sizeof(double));
-    A[i].U_buf = A[i].U_ptr;
 
-    std::copy(basis[i].U, &basis[i].U[A[i].sizeU], A[i].U_buf);
+    std::copy(basis[i].U, &basis[i].U[A[i].sizeU], A[i].U_ptr);
 
     int64_t k1, k2;
     countMaxIJ(&k1, &k2, &rels_near[i]);
@@ -422,7 +409,7 @@ void allocNodes(Node A[], double** Workspace, int64_t* Lwork, const Base basis[]
 
     for (int64_t x = 0; x < n_i; x++) {
       for (int64_t yx = rels_near[i].RowIndex[x]; yx < rels_near[i].RowIndex[x + 1]; yx++)
-        arr_m[yx] = (Matrix) { &A[i].A_buf[yx * stride], dimn, dimn, dimn }; // A
+        arr_m[yx] = (Matrix) { &A[i].A_ptr[yx * stride], dimn, dimn, dimn }; // A
 
       for (int64_t yx = rels_far[i].RowIndex[x]; yx < rels_far[i].RowIndex[x + 1]; yx++)
         arr_m[yx + nnz] = (Matrix) { NULL, basis[i].dimS, basis[i].dimS, dimn_up }; // S

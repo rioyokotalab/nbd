@@ -15,8 +15,7 @@
 #include <cstring>
 
 int main(int argc, char* argv[]) {
-  init_libs(&argc, &argv);
-
+  MPI_Init(&argc, &argv);
   double prog_time = MPI_Wtime();
 
   int64_t Nbody = argc > 1 ? atol(argv[1]) : 8192;
@@ -201,6 +200,6 @@ int main(int argc, char* argv[]) {
   free(X2);
   set_work_size(0, &Workspace, &Lwork);
 
-  fin_libs();
+  MPI_Finalize();
   return 0;
 }

@@ -23,8 +23,9 @@ class Node {
 public:
   int64_t lenA, lenS;
   Matrix *A, *S;
-  double* A_ptr, *A_buf, *X_ptr, *X_buf;
-  double* U_ptr, *U_buf;
+  double* A_ptr;
+  double* X_ptr;
+  double* U_ptr;
   int64_t sizeA, sizeU;
   BatchedFactorParams params; 
 };
@@ -33,8 +34,6 @@ class Base;
 class CellComm;
 class CSR;
 
-void init_libs(int* argc, char*** argv);
-void fin_libs();
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE);
 
 void batchParamsCreate(BatchedFactorParams* params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, double* X_ptr, int64_t N_up, double** A_up, double** X_up,
