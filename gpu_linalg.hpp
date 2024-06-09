@@ -31,7 +31,7 @@ public:
 };
 
 class Base;
-class CellComm;
+class ColCommMPI;
 class CSR;
 
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE);
@@ -42,11 +42,11 @@ void batchParamsDestory(BatchedFactorParams* params);
 
 void lastParamsCreate(BatchedFactorParams* params, double* A, double* X, int64_t N, int64_t S, int64_t clen, const int64_t cdims[]);
 
-void batchCholeskyFactor(BatchedFactorParams* params, const CellComm* comm);
-void batchForwardULV(BatchedFactorParams* params, const CellComm* comm);
-void batchBackwardULV(BatchedFactorParams* params, const CellComm* comm);
-void chol_decomp(BatchedFactorParams* params, const CellComm* comm);
-void chol_solve(BatchedFactorParams* params, const CellComm* comm);
+void batchCholeskyFactor(BatchedFactorParams* params, const ColCommMPI* comm);
+void batchForwardULV(BatchedFactorParams* params, const ColCommMPI* comm);
+void batchBackwardULV(BatchedFactorParams* params, const ColCommMPI* comm);
+void chol_decomp(BatchedFactorParams* params, const ColCommMPI* comm);
+void chol_solve(BatchedFactorParams* params, const ColCommMPI* comm);
 
-void allocNodes(Node A[], double** Workspace, int64_t* Lwork, const Base basis[], const CSR rels_near[], const CSR rels_far[], const CellComm comm[], int64_t levels);
+void allocNodes(Node A[], double** Workspace, int64_t* Lwork, const Base basis[], const CSR rels_near[], const CSR rels_far[], const ColCommMPI comm[], int64_t levels);
 void node_free(Node* node);

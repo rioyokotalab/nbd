@@ -2,7 +2,7 @@
 #include <build_tree.hpp>
 #include <kernel.hpp>
 #include <linalg.hpp>
-#include <comm.hpp>
+#include <comm-mpi.hpp>
 #include <basis.hpp>
 
 #include <cstdio>
@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <array>
+#include <set>
 
 void get_bounds(const double* bodies, int64_t nbodies, double R[], double C[]) {
   double Xmin[3];
@@ -201,7 +202,7 @@ void loadX(double* X, int64_t seg, const double Xbodies[], int64_t Xbegin, int64
   }
 }
 
-void evalD(const EvalDouble& eval, Matrix* D, const CSR* rels, const Cell* cells, const double* bodies, const CellComm* comm) {
+void evalD(const EvalDouble& eval, Matrix* D, const CSR* rels, const Cell* cells, const double* bodies, const ColCommMPI* comm) {
   int64_t ibegin = 0, nodes = 0;
   content_length(&nodes, NULL, &ibegin, comm);
   ibegin = comm->iGlobal(ibegin);
@@ -226,7 +227,7 @@ void evalD(const EvalDouble& eval, Matrix* D, const CSR* rels, const Cell* cells
   }
 }
 
-void evalS(const EvalDouble& eval, Matrix* S, const Base* basis, const CSR* rels, const CellComm* comm) {
+void evalS(const EvalDouble& eval, Matrix* S, const Base* basis, const CSR* rels, const ColCommMPI* comm) {
   int64_t ibegin = 0;
   content_length(NULL, NULL, &ibegin, comm);
   int64_t seg = basis->dimS * 3;
@@ -242,3 +243,54 @@ void evalS(const EvalDouble& eval, Matrix* S, const Base* basis, const CSR* rels
     }
   }
 }
+
+void relations(CSR rels[], const CSR* cellRel, int64_t levels, const ColCommMPI* comm) {
+ 
+  for (int64_t i = 0; i <= levels; i++) {
+    int64_t nodes, neighbors, ibegin;
+    content_length(&nodes, &neighbors, &ibegin, &comm[i]);
+    ibegin = comm[i].iGlobal(ibegin);
+    CSR* csc = &rels[i];
+
+    csc->M = neighbors;
+    csc->N = nodes;
+    int64_t ent_max = nodes * csc->M;
+    csc->RowIndex.resize(nodes + 1);
+    csc->ColIndex.resize(ent_max);
+
+    int64_t count = 0;
+    for (int64_t j = 0; j < nodes; j++) {
+      int64_t lc = ibegin + j;
+      csc->RowIndex[j] = count;
+      int64_t cbegin = cellRel->RowIndex[lc];
+      int64_t ent = cellRel->RowIndex[lc + 1] - cbegin;
+      for (int64_t k = 0; k < ent; k++) {
+        csc->ColIndex[count + k] = comm[i].iLocal(cellRel->ColIndex[cbegin + k]);
+      }
+      count = count + ent;
+    }
+
+    if (count < ent_max)
+      csc->ColIndex.resize(count);
+    csc->RowIndex[nodes] = count;
+  }
+}
+
+
+CSR::CSR(const CSR& A, const CSR& B) {
+  long long M = A.RowIndex.size() - 1;
+  RowIndex.resize(M + 1);
+  ColIndex.clear();
+  RowIndex[0] = 0;
+
+  for (long long y = 0; y < M; y++) {
+    std::set<long long> cols;
+    cols.insert(A.ColIndex.begin() + A.RowIndex[y], A.ColIndex.begin() + A.RowIndex[y + 1]);
+    cols.insert(B.ColIndex.begin() + B.RowIndex[y], B.ColIndex.begin() + B.RowIndex[y + 1]);
+
+    for (std::set<long long>::iterator i = cols.begin(); i != cols.end(); i = std::next(i))
+      ColIndex.push_back(*i);
+    RowIndex[y + 1] = (long long)ColIndex.size();
+  }
+}
+

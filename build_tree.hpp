@@ -15,6 +15,9 @@ public:
   std::vector<int64_t> RowIndex;
   std::vector<int64_t> ColIndex;
 
+  CSR() : M(0), N(0), RowIndex(), ColIndex() {}
+  CSR(const CSR& A, const CSR& B);
+
   int64_t lookupIJ(int64_t i, int64_t j) const {
     if (j < 0 || j >= N)
     { return -1; }
@@ -32,7 +35,7 @@ public:
 class EvalDouble;
 class Matrix;
 class Base;
-class CellComm;
+class ColCommMPI;
 
 void buildTree(int64_t* ncells, Cell* cells, double* bodies, int64_t nbodies, int64_t levels);
 
@@ -42,6 +45,8 @@ void countMaxIJ(int64_t* max_i, int64_t* max_j, const CSR* rels);
 
 void loadX(double* X, int64_t seg, const double Xbodies[], int64_t Xbegin, int64_t ncells, const Cell cells[]);
 
-void evalD(const EvalDouble& eval, Matrix* D, const CSR* rels, const Cell* cells, const double* bodies, const CellComm* comm);
+void evalD(const EvalDouble& eval, Matrix* D, const CSR* rels, const Cell* cells, const double* bodies, const ColCommMPI* comm);
 
-void evalS(const EvalDouble& eval, Matrix* S, const Base* basis, const CSR* rels, const CellComm* comm);
+void evalS(const EvalDouble& eval, Matrix* S, const Base* basis, const CSR* rels, const ColCommMPI* comm);
+
+void relations(CSR rels[], const CSR* cellRel, int64_t levels, const ColCommMPI* comm);

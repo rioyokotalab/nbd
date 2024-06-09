@@ -20,6 +20,7 @@ protected:
   template<typename T> inline void level_sum(T* data, long long len) const;
   template<typename T> inline void neighbor_bcast(T* data, const long long box_dims[]) const;
   template<typename T> inline void neighbor_reduce(T* data, const long long box_dims[]) const;
+  template<typename T> inline void dup_bcast(T* data, long long len) const;
 
 public:
   std::pair<double, double>* timer;
@@ -34,7 +35,9 @@ public:
   long long lenLocal() const;
   long long lenNeighbors() const;
 
+  void level_merge(double* data, long long len) const;
   void level_merge(std::complex<double>* data, long long len) const;
+
   void level_sum(std::complex<double>* data, long long len) const;
 
   void neighbor_bcast(long long* data, const long long box_dims[]) const;
@@ -42,10 +45,32 @@ public:
   void neighbor_bcast(std::complex<double>* data, const long long box_dims[]) const;
 
   void neighbor_reduce(long long* data, const long long box_dims[]) const;
+  void neighbor_reduce(double* data, const long long box_dims[]) const;
   void neighbor_reduce(std::complex<double>* data, const long long box_dims[]) const;
+
+  void dup_bcast(double* data, long long len) const;
 
   void record_mpi() const;
 
   void free_all_comms();
 };
+
+class Cell;
+class CSR;
+
+void buildComm(ColCommMPI* comms, int64_t ncells, const Cell* cells, const CSR* cellFar, const CSR* cellNear, int64_t levels);
+
+void cellComm_free(ColCommMPI* comms, int64_t levels);
+
+void content_length(int64_t* local, int64_t* neighbors, int64_t* local_off, const ColCommMPI* comm);
+
+int64_t neighbor_bcast_sizes_cpu(int64_t* data, const ColCommMPI* comm);
+
+void neighbor_bcast_cpu(double* data, int64_t seg, const ColCommMPI* comm);
+
+void neighbor_reduce_cpu(double* data, int64_t seg, const ColCommMPI* comm);
+
+void level_merge_cpu(double* data, int64_t len, const ColCommMPI* comm);
+
+void dup_bcast_cpu(double* data, int64_t len, const ColCommMPI* comm);
 

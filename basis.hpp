@@ -19,10 +19,10 @@ public:
 
 class EvalDouble;
 class CSR;
-class CellComm;
+class ColCommMPI;
 
 void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* rel_near, int64_t levels,
-  const CellComm* comm, const double* bodies, int64_t nbodies, int64_t mrank, int64_t sp_pts, int64_t alignment);
+  const ColCommMPI* comm, const double* bodies, int64_t nbodies, int64_t mrank, int64_t sp_pts, int64_t alignment);
 
 void basis_free(Base* basis);
 

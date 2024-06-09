@@ -3,7 +3,7 @@
 #include <linalg.hpp>
 #include <build_tree.hpp>
 #include <basis.hpp>
-#include <comm.hpp>
+#include <comm-mpi.hpp>
 
 #include <iostream>
 #include <algorithm>
@@ -209,7 +209,7 @@ void batchParamsDestory(struct BatchedFactorParams* params) {
     free(params->ipiv);  
 }
 
-void batchCholeskyFactor(struct BatchedFactorParams* params, const struct CellComm* comm) {
+void batchCholeskyFactor(struct BatchedFactorParams* params, const struct ColCommMPI* comm) {
   int64_t U = params->N_upper, R = params->N_r, S = params->N_s, N = R + S, D = params->L_diag;
   double one = 1., zero = 0., minus_one = -1.;
   int info_host = 0;
@@ -261,7 +261,7 @@ void batchCholeskyFactor(struct BatchedFactorParams* params, const struct CellCo
   }
 }
 
-void batchForwardULV(struct BatchedFactorParams* params, const struct CellComm* comm) {
+void batchForwardULV(struct BatchedFactorParams* params, const struct ColCommMPI* comm) {
   int64_t R = params->N_r, S = params->N_s, N = R + S, D = params->L_diag, ONE = 1;
   int64_t K = params->Kfwd;
   double one = 1., zero = 0., minus_one = -1.;
@@ -299,7 +299,7 @@ void batchForwardULV(struct BatchedFactorParams* params, const struct CellComm* 
       &params->ACC_data[i * N * K], N, params->ONE_DATA, K, one, &params->X_data[i * R], R);
 }
 
-void batchBackwardULV(struct BatchedFactorParams* params, const struct CellComm* comm) {
+void batchBackwardULV(struct BatchedFactorParams* params, const struct ColCommMPI* comm) {
   int64_t R = params->N_r, S = params->N_s, N = R + S, D = params->L_diag, ONE = 1;
   int64_t K = params->Kback;
   double one = 1., zero = 0., minus_one = -1.;
@@ -355,7 +355,7 @@ void lastParamsCreate(struct BatchedFactorParams* params, double* A, double* X, 
   params->info = (int*)malloc(sizeof(int));
 }
 
-void chol_decomp(struct BatchedFactorParams* params, const struct CellComm* comm) {
+void chol_decomp(struct BatchedFactorParams* params, const struct ColCommMPI* comm) {
   double* A = params->A_data;
   int64_t N = params->N_r;
   double one = 1.;
@@ -365,7 +365,7 @@ void chol_decomp(struct BatchedFactorParams* params, const struct CellComm* comm
   *params->info = LAPACKE_dgetrf(LAPACK_COL_MAJOR, N, N, A, N, (long long*)params->ipiv);
 }
 
-void chol_solve(struct BatchedFactorParams* params, const struct CellComm* comm) {
+void chol_solve(struct BatchedFactorParams* params, const struct ColCommMPI* comm) {
   const double* A = params->A_data;
   double* X = params->X_data;
   int64_t N = params->N_r;
@@ -374,7 +374,7 @@ void chol_solve(struct BatchedFactorParams* params, const struct CellComm* comm)
   LAPACKE_dgetrs(LAPACK_COL_MAJOR, 'N', N, 1, A, N, (long long*)params->ipiv, X, N);
 }
 
-void allocNodes(Node A[], double** Workspace, int64_t* Lwork, const Base basis[], const CSR rels_near[], const CSR rels_far[], const CellComm comm[], int64_t levels) {
+void allocNodes(Node A[], double** Workspace, int64_t* Lwork, const Base basis[], const CSR rels_near[], const CSR rels_far[], const ColCommMPI comm[], int64_t levels) {
   int64_t work_size = 0;
 
   for (int64_t i = levels; i >= 0; i--) {

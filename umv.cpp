@@ -4,7 +4,7 @@
 #include <build_tree.hpp>
 #include <gpu_linalg.hpp>
 #include <linalg.hpp>
-#include <comm.hpp>
+#include <comm-mpi.hpp>
 
 #include <cstdio>
 #include <cstring>
@@ -15,7 +15,7 @@
 
 class RightHandSides { public: Matrix *X, *Xc, *Xo, *B; };
 
-void allocRightHandSidesMV(RightHandSides rhs[], const Base base[], const CellComm comm[], int64_t levels) {
+void allocRightHandSidesMV(RightHandSides rhs[], const Base base[], const ColCommMPI comm[], int64_t levels) {
   for (int64_t l = 0; l <= levels; l++) {
     int64_t len;
     content_length(NULL, &len, NULL, &comm[l]);
@@ -49,7 +49,7 @@ void rightHandSides_free(RightHandSides* rhs) {
   free(rhs->X);
 }
 
-void matVecA(const Node A[], const Base basis[], const CSR rels_near[], double* X, const CellComm comm[], int64_t levels) {
+void matVecA(const Node A[], const Base basis[], const CSR rels_near[], double* X, const ColCommMPI comm[], int64_t levels) {
   int64_t lbegin = 0, llen = 0;
   content_length(&llen, NULL, &lbegin, &comm[levels]);
 

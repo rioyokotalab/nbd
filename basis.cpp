@@ -1,7 +1,7 @@
 
 #include <basis.hpp>
 #include <linalg.hpp>
-#include <comm.hpp>
+#include <comm-mpi.hpp>
 #include <build_tree.hpp>
 
 #include <cstdio>
@@ -44,7 +44,7 @@ int64_t generate_far(int64_t flen, int64_t far[], int64_t ngbs, const int64_t ng
 }
 
 void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* rel_near, int64_t levels,
-  const CellComm* comm, const double* bodies, int64_t nbodies, int64_t mrank, int64_t sp_pts, int64_t alignment) {
+  const ColCommMPI* comm, const double* bodies, int64_t nbodies, int64_t mrank, int64_t sp_pts, int64_t alignment) {
 
   for (int64_t l = levels; l >= 0; l--) {
     int64_t xlen = 0, ibegin = 0, nodes = 0;

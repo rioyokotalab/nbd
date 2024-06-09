@@ -1,7 +1,7 @@
 
 #include <basis.hpp>
 #include <build_tree.hpp>
-#include <comm.hpp>
+#include <comm-mpi.hpp>
 #include <gpu_linalg.hpp>
 #include <linalg.hpp>
 #include <umv.hpp>
@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <cstring>
+#include <algorithm>
 
 int main(int argc, char* argv[]) {
   MPI_Init(&argc, &argv);
@@ -33,6 +34,10 @@ int main(int argc, char* argv[]) {
   Laplace3D eval(1.);
   //Yukawa3D eval(1.e-6, 1.);
   //Gaussian eval(20);
+
+  int mpi_rank = 0, mpi_size = 1;
+  MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
   
   double* body = (double*)malloc(sizeof(double) * Nbody * 3);
   double* Xbody = (double*)malloc(sizeof(double) * Nbody);
@@ -40,7 +45,7 @@ int main(int argc, char* argv[]) {
   CSR cellNear, cellFar;
   CSR* rels_far = (CSR*)calloc(levels + 1, sizeof(CSR));
   CSR* rels_near = (CSR*)calloc(levels + 1, sizeof(CSR));
-  CellComm* cell_comm = (CellComm*)calloc(levels + 1, sizeof(CellComm));
+  ColCommMPI* cell_comm = (ColCommMPI*)calloc(levels + 1, sizeof(ColCommMPI));
   Base* basis = (Base*)calloc(levels + 1, sizeof(Base));
   Node* nodes = (Node*)malloc(sizeof(Node) * (levels + 1));
 
@@ -64,11 +69,18 @@ int main(int argc, char* argv[]) {
   traverse('N', &cellNear, ncells, cell, theta);
   traverse('F', &cellFar, ncells, cell, theta);
 
-  CommTimer timer;
-  buildComm(cell_comm, ncells, cell, &cellFar, &cellNear, levels);
-  for (int64_t i = 0; i <= levels; i++) {
+  CSR cellNeighbor(cellNear, cellFar);
+
+  std::pair<double, double> timer(0, 0);
+  std::vector<std::pair<long long, long long>> mapping(mpi_size, std::make_pair(0, 1));
+  std::vector<std::pair<long long, long long>> tree(ncells);
+  std::transform(&cell[0], &cell[ncells], tree.begin(), [](const Cell& c) { return std::make_pair(c.Child[0], c.Child[1]); });
+  
+  for (long long i = 0; i <= levels; i++) {
+    cell_comm[i] = ColCommMPI(&tree[0], &mapping[0], (long long*)cellNeighbor.RowIndex.data(), (long long*)cellNeighbor.ColIndex.data());
     cell_comm[i].timer = &timer;
   }
+
   relations(rels_near, &cellNear, levels, cell_comm);
   relations(rels_far, &cellFar, levels, cell_comm);
 
@@ -82,7 +94,7 @@ int main(int argc, char* argv[]) {
 
   MPI_Barrier(MPI_COMM_WORLD);
   construct_time = MPI_Wtime() - construct_time;
-  construct_comm_time = timer.get_comm_timing();
+  construct_comm_time = 0;
 
   double* Workspace = NULL;
   int64_t Lwork = 0;
@@ -101,7 +113,7 @@ int main(int argc, char* argv[]) {
   matVecA(nodes, basis, rels_near, X2, cell_comm, levels);
 
   matvec_time = MPI_Wtime() - matvec_time;
-  matvec_comm_time = timer.get_comm_timing();
+  matvec_comm_time = 0;
 
   double cerr = 0.;
   int64_t body_local[2] = { cell[gbegin].Body[0], cell[gbegin + llen - 1].Body[1] };
@@ -118,7 +130,7 @@ int main(int argc, char* argv[]) {
   MPI_Barrier(MPI_COMM_WORLD);
 
   factor_time = MPI_Wtime() - factor_time;
-  factor_comm_time = timer.get_comm_timing();
+  factor_comm_time = 0;
 
   Profile profile;
   for (int64_t i = 1; i <= levels; i++)
@@ -148,17 +160,13 @@ int main(int argc, char* argv[]) {
   MPI_Barrier(MPI_COMM_WORLD);
 
   solve_time = MPI_Wtime() - solve_time;
-  solve_comm_time = timer.get_comm_timing();
+  solve_comm_time = 0;
 
   memcpy(X1, &nodes[levels].X_ptr[lbegin * basis[levels].dimN], lenX * sizeof(double));
 
   loadX(X2, basis[levels].dimN, Xbody, 0, llen, &cell[gbegin]);
   double err;
   solveRelErr(&err, X1, X2, lenX);
-
-  int mpi_rank, mpi_size;
-  MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
 
   prog_time = MPI_Wtime() - prog_time;
 
@@ -185,8 +193,8 @@ int main(int argc, char* argv[]) {
   for (int64_t i = 0; i <= levels; i++) {
     basis_free(&basis[i]);
     node_free(&nodes[i]);
+    cell_comm[i].free_all_comms();
   }
-  cellComm_free(cell_comm, levels);
   
   free(body);
   free(Xbody);

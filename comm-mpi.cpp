@@ -141,10 +141,7 @@ template<typename T> inline MPI_Datatype get_mpi_datatype() {
 template<typename T> inline void ColCommMPI::level_merge(T* data, long long len) const {
   if (MergeComm.second != MPI_COMM_NULL) {
     record_mpi();
-    if (MergeComm.first)
-      MPI_Reduce(MPI_IN_PLACE, data, len, get_mpi_datatype<T>(), MPI_SUM, 0, MergeComm.second);
-    else
-      MPI_Reduce(data, data, len, get_mpi_datatype<T>(), MPI_SUM, 0, MergeComm.second);
+    MPI_Allreduce(MPI_IN_PLACE, data, len, get_mpi_datatype<T>(), MPI_SUM, MergeComm.second);
     record_mpi();
   }
 }
@@ -197,6 +194,18 @@ template<typename T> inline void ColCommMPI::neighbor_reduce(T* data, const long
   record_mpi();
 }
 
+template<typename T> inline void ColCommMPI::dup_bcast(T* data, long long len) const {
+  if (DupComm != MPI_COMM_NULL) {
+    record_mpi();
+    MPI_Bcast(data, len, get_mpi_datatype<T>(), 0, DupComm);
+    record_mpi();
+  }
+}
+
+void ColCommMPI::level_merge(double* data, long long len) const {
+  level_merge<double>(data, len);
+}
+
 void ColCommMPI::level_merge(std::complex<double>* data, long long len) const {
   level_merge<std::complex<double>>(data, len);
 }
@@ -221,8 +230,16 @@ void ColCommMPI::neighbor_reduce(long long* data, const long long box_dims[]) co
   neighbor_reduce<long long>(data, box_dims);
 }
 
+void ColCommMPI::neighbor_reduce(double* data, const long long box_dims[]) const {
+  neighbor_reduce<double>(data, box_dims);
+}
+
 void ColCommMPI::neighbor_reduce(std::complex<double>* data, const long long box_dims[]) const {
   neighbor_reduce<std::complex<double>>(data, box_dims);
+}
+
+void ColCommMPI::dup_bcast(double* data, long long len) const {
+  dup_bcast<double>(data, len);
 }
 
 void ColCommMPI::record_mpi() const {
@@ -243,4 +260,41 @@ void ColCommMPI::free_all_comms() {
   for (MPI_Comm& c : allocedComm)
     MPI_Comm_free(&c);
   allocedComm.clear();
+}
+
+void content_length(int64_t* local, int64_t* neighbors, int64_t* local_off, const ColCommMPI* comm) {
+  if (local)
+    *local = comm->lenLocal();
+  if (neighbors)
+    *neighbors = comm->lenNeighbors();
+  if (local_off)
+    *local_off = comm->oLocal();
+}
+
+int64_t neighbor_bcast_sizes_cpu(int64_t* data, const ColCommMPI* comm) {
+  int64_t max = 0;
+  std::vector<long long> sizes(comm->lenNeighbors(), 1ll);
+  comm->neighbor_bcast((long long*)data, sizes.data());
+  for (int64_t i = 0; i < comm->lenNeighbors(); i++)
+    max = std::max(max, data[i]);
+  MPI_Allreduce(MPI_IN_PLACE, &max, 1, MPI_INT64_T, MPI_MAX, MPI_COMM_WORLD);
+  return max;
+}
+
+void neighbor_bcast_cpu(double* data, int64_t seg, const ColCommMPI* comm) {
+  std::vector<long long> sizes(comm->lenNeighbors(), seg);
+  comm->neighbor_bcast(data, sizes.data());
+}
+
+void neighbor_reduce_cpu(double* data, int64_t seg, const ColCommMPI* comm) {
+  std::vector<long long> sizes(comm->lenNeighbors(), seg);
+  comm->neighbor_reduce(data, sizes.data());
+}
+
+void level_merge_cpu(double* data, int64_t len, const ColCommMPI* comm) {
+  comm->level_merge(data, len);
+}
+
+void dup_bcast_cpu(double* data, int64_t len, const ColCommMPI* comm) {
+  comm->dup_bcast(data, len);
 }
