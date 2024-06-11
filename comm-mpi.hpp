@@ -64,7 +64,7 @@ void cellComm_free(ColCommMPI* comms, int64_t levels);
 
 void content_length(int64_t* local, int64_t* neighbors, int64_t* local_off, const ColCommMPI* comm);
 
-int64_t neighbor_bcast_sizes_cpu(int64_t* data, const ColCommMPI* comm);
+void neighbor_bcast_sizes_cpu(int64_t* data, const ColCommMPI* comm);
 
 void neighbor_bcast_cpu(double* data, int64_t seg, const ColCommMPI* comm);
 

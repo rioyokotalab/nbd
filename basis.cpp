@@ -43,8 +43,8 @@ int64_t generate_far(int64_t flen, int64_t far[], int64_t ngbs, const int64_t ng
   return flen;
 }
 
-void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* rel_near, int64_t levels,
-  const ColCommMPI* comm, const double* bodies, int64_t nbodies, int64_t mrank, int64_t sp_pts, int64_t alignment) {
+void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* rel_near, int64_t mrank, int64_t leaf, int64_t branches, int64_t levels,
+  const ColCommMPI* comm, const double* bodies, int64_t nbodies, int64_t sp_pts, int64_t alignment) {
 
   for (int64_t l = levels; l >= 0; l--) {
     int64_t xlen = 0, ibegin = 0, nodes = 0;
@@ -75,8 +75,8 @@ void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* re
       else
         basis[l].Dims[i] = cells[celli[i]].Body[1] - cells[celli[i]].Body[0];
     }
-
-    int64_t seg_dim = neighbor_bcast_sizes_cpu(&basis[l].Dims[0], &comm[l]);
+    neighbor_bcast_sizes_cpu(&basis[l].Dims[0], &comm[l]);
+    int64_t seg_dim = l == levels ? leaf : (mrank * branches);
     int64_t seg_skeletons = 3 * seg_dim;
     int64_t seg_matrix = seg_dim * seg_dim * 2;
     std::vector<double> Skeletons(xlen * seg_skeletons, 0.);
@@ -144,26 +144,8 @@ void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* re
     }
     neighbor_bcast_sizes_cpu(basis[l].DimsLr.data(), &comm[l]);
 
-    int64_t max[3] = { 0, 0, 0 };
-    for (int64_t i = 0; i < xlen; i++) {
-      int64_t i1 = basis[l].DimsLr[i];
-      int64_t i2 = basis[l].Dims[i] - basis[l].DimsLr[i];
-      int64_t rem1 = i1 & (alignment - 1);
-      int64_t rem2 = i2 & (alignment - 1);
-
-      int64_t gi = celli[i];
-      int64_t clen = cells[gi].Child[1] - cells[gi].Child[0];
-
-      i1 = std::max(alignment, i1 - rem1 + (rem1 ? alignment : 0));
-      i2 = std::max(alignment, i2 - rem2 + (rem2 ? alignment : 0));
-      max[0] = std::max(max[0], i1);
-      max[1] = std::max(max[1], i2);
-      max[2] = std::max(max[2], clen);
-    }
-    MPI_Allreduce(MPI_IN_PLACE, max, 3, MPI_INT64_T, MPI_MAX, MPI_COMM_WORLD);
-
-    basis[l].dimN = std::max(max[0] + max[1], basis[l + 1].dimS * max[2]);
-    basis[l].dimS = max[0];
+    basis[l].dimN = seg_dim;
+    basis[l].dimS = std::min(mrank, seg_dim);
     basis[l].dimR = basis[l].dimN - basis[l].dimS;
     int64_t stride = basis[l].dimN * basis[l].dimN;
     int64_t stride_r = basis[l].dimS * basis[l].dimS;

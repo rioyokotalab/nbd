@@ -271,14 +271,9 @@ void content_length(int64_t* local, int64_t* neighbors, int64_t* local_off, cons
     *local_off = comm->oLocal();
 }
 
-int64_t neighbor_bcast_sizes_cpu(int64_t* data, const ColCommMPI* comm) {
-  int64_t max = 0;
+void neighbor_bcast_sizes_cpu(int64_t* data, const ColCommMPI* comm) {
   std::vector<long long> sizes(comm->lenNeighbors(), 1ll);
   comm->neighbor_bcast((long long*)data, sizes.data());
-  for (int64_t i = 0; i < comm->lenNeighbors(); i++)
-    max = std::max(max, data[i]);
-  MPI_Allreduce(MPI_IN_PLACE, &max, 1, MPI_INT64_T, MPI_MAX, MPI_COMM_WORLD);
-  return max;
 }
 
 void neighbor_bcast_cpu(double* data, int64_t seg, const ColCommMPI* comm) {

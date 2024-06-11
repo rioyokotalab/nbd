@@ -374,7 +374,7 @@ void chol_solve(struct BatchedFactorParams* params, const struct ColCommMPI* com
   LAPACKE_dgetrs(LAPACK_COL_MAJOR, 'N', N, 1, A, N, (long long*)params->ipiv, X, N);
 }
 
-void allocNodes(Node A[], double** Workspace, int64_t* Lwork, const Base basis[], const CSR rels_near[], const CSR rels_far[], const ColCommMPI comm[], int64_t levels) {
+void allocNodes(Node A[], double** Workspace, int64_t* Lwork, int64_t rank, int64_t leaf, int64_t branches, const Base basis[], const CSR rels_near[], const CSR rels_far[], const ColCommMPI comm[], int64_t levels) {
   int64_t work_size = 0;
 
   for (int64_t i = levels; i >= 0; i--) {

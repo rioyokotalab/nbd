@@ -14,6 +14,7 @@
 #include <math.h>
 #include <cstring>
 #include <algorithm>
+#include <numeric>
 
 int main(int argc, char* argv[]) {
   MPI_Init(&argc, &argv);
@@ -88,9 +89,10 @@ int main(int argc, char* argv[]) {
   content_length(&llen, NULL, &lbegin, &cell_comm[levels]);
   int64_t gbegin = cell_comm[levels].iGlobal(lbegin);
 
+  int64_t tree_part = 2;
   MPI_Barrier(MPI_COMM_WORLD);
   double construct_time = MPI_Wtime(), construct_comm_time;
-  buildBasis(eval, basis, cell, &cellNear, levels, cell_comm, body, Nbody, rank_max, sp_pts, 4);
+  buildBasis(eval, basis, cell, &cellNear, rank_max, leaf_size, tree_part, levels, cell_comm, body, Nbody, sp_pts, 4);
 
   MPI_Barrier(MPI_COMM_WORLD);
   construct_time = MPI_Wtime() - construct_time;
@@ -98,7 +100,7 @@ int main(int argc, char* argv[]) {
 
   double* Workspace = NULL;
   int64_t Lwork = 0;
-  allocNodes(nodes, &Workspace, &Lwork, basis, rels_near, rels_far, cell_comm, levels);
+  allocNodes(nodes, &Workspace, &Lwork, rank_max, leaf_size, tree_part, basis, rels_near, rels_far, cell_comm, levels);
 
   evalD(eval, nodes[levels].A, &cellNear, cell, body, &cell_comm[levels]);
   for (int64_t i = 0; i <= levels; i++)
