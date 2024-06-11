@@ -22,13 +22,13 @@ int main(int argc, char* argv[]) {
 
   int64_t Nbody = argc > 1 ? atol(argv[1]) : 8192;
   double theta = argc > 2 ? atof(argv[2]) : 1e0;
-  int64_t leaf_size = argc > 3 ? atol(argv[3]) : 256;
-  int64_t rank_max = argc > 4 ? atol(argv[4]) : 100;
+  int64_t rank_max = argc > 3 ? atol(argv[3]) : 100;
+  int64_t leaf_size = argc > 4 ? atol(argv[4]) : 256;
   int64_t sp_pts = argc > 5 ? atol(argv[5]) : Nbody;
   const char* fname = argc > 6 ? argv[6] : NULL;
 
   leaf_size = Nbody < leaf_size ? Nbody : leaf_size;
-  int64_t levels = (int64_t)log2((double)Nbody / leaf_size);
+  int64_t levels = (int64_t)std::ceil(log2((double)Nbody / leaf_size));
   int64_t Nleaf = (int64_t)1 << levels;
   int64_t ncells = Nleaf + Nleaf - 1;
   
@@ -92,7 +92,7 @@ int main(int argc, char* argv[]) {
   int64_t tree_part = 2;
   MPI_Barrier(MPI_COMM_WORLD);
   double construct_time = MPI_Wtime(), construct_comm_time;
-  buildBasis(eval, basis, cell, &cellNear, rank_max, leaf_size, tree_part, levels, cell_comm, body, Nbody, sp_pts, 4);
+  buildBasis(eval, basis, cell, &cellNear, rank_max, leaf_size, tree_part, levels, cell_comm, body, Nbody, sp_pts);
 
   MPI_Barrier(MPI_COMM_WORLD);
   construct_time = MPI_Wtime() - construct_time;
@@ -100,7 +100,7 @@ int main(int argc, char* argv[]) {
 
   double* Workspace = NULL;
   int64_t Lwork = 0;
-  allocNodes(nodes, &Workspace, &Lwork, rank_max, leaf_size, tree_part, basis, rels_near, rels_far, cell_comm, levels);
+  allocNodes(nodes, &Workspace, &Lwork, rank_max, leaf_size, tree_part, cell, basis, rels_near, rels_far, cell_comm, levels);
 
   evalD(eval, nodes[levels].A, &cellNear, cell, body, &cell_comm[levels]);
   for (int64_t i = 0; i <= levels; i++)

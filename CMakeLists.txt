@@ -20,4 +20,5 @@ add_executable(main.app ${sources} ${headers})
 
 target_include_directories(main.app PRIVATE ./)
 target_compile_definitions(main.app PRIVATE MKL_ILP64 MKL_Complex16=std::complex<double>)
+target_compile_options(main.app PRIVATE "-O3" "-m64" "-Wall" "-Wextra")
 target_link_libraries(main.app MPI::MPI_CXX MKL::MKL)

@@ -44,7 +44,7 @@ int64_t generate_far(int64_t flen, int64_t far[], int64_t ngbs, const int64_t ng
 }
 
 void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* rel_near, int64_t mrank, int64_t leaf, int64_t branches, int64_t levels,
-  const ColCommMPI* comm, const double* bodies, int64_t nbodies, int64_t sp_pts, int64_t alignment) {
+  const ColCommMPI* comm, const double* bodies, int64_t nbodies, int64_t sp_pts) {
 
   for (int64_t l = levels; l >= 0; l--) {
     int64_t xlen = 0, ibegin = 0, nodes = 0;
@@ -157,8 +157,8 @@ void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* re
 
     for (int64_t i = 0; i < xlen; i++) {
       double* M_ptr = basis[l].M + i * basis[l].dimS * 3;
-      double* Uc_ptr = basis[l].U + i * stride;
-      double* Uo_ptr = Uc_ptr + basis[l].dimR * basis[l].dimN;
+      double* Uo_ptr = basis[l].U + i * stride;
+      double* Uc_ptr = Uo_ptr + basis[l].dimS * basis[l].dimN;
       double* R_ptr = basis[l].R_cpu + i * stride_r;
 
       int64_t Nc = basis[l].Dims[i] - basis[l].DimsLr[i];

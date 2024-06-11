@@ -33,6 +33,7 @@ public:
 class Base;
 class ColCommMPI;
 class CSR;
+class Cell;
 
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE);
 
@@ -48,5 +49,5 @@ void batchBackwardULV(BatchedFactorParams* params, const ColCommMPI* comm);
 void chol_decomp(BatchedFactorParams* params, const ColCommMPI* comm);
 void chol_solve(BatchedFactorParams* params, const ColCommMPI* comm);
 
-void allocNodes(Node A[], double** Workspace, int64_t* Lwork, int64_t rank, int64_t leaf, int64_t branches, const Base basis[], const CSR rels_near[], const CSR rels_far[], const ColCommMPI comm[], int64_t levels);
+void allocNodes(Node A[], double** Workspace, int64_t* Lwork, int64_t rank, int64_t leaf, int64_t branches, const Cell cells[], const Base basis[], const CSR rels_near[], const CSR rels_far[], const ColCommMPI comm[], int64_t levels);
 void node_free(Node* node);
