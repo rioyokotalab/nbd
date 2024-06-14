@@ -83,8 +83,7 @@ int main(int argc, char* argv[]) {
   relations(rels_near, &cellNear, levels, cell_comm);
   relations(rels_far, &cellFar, levels, cell_comm);
 
-  int64_t lbegin = 0, llen = 0;
-  content_length(&llen, NULL, &lbegin, &cell_comm[levels]);
+  int64_t lbegin = cell_comm[levels].oLocal(), llen = cell_comm[levels].lenLocal();
   int64_t gbegin = cell_comm[levels].iGlobal(lbegin);
 
   int64_t tree_part = 2;

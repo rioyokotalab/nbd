@@ -488,7 +488,6 @@ void memcpy2d(T* dst, const T* src, int64_t rows, int64_t cols, int64_t ld_dst, 
 
 void allocNodes(Node A[], double** Workspace, int64_t* Lwork, int64_t rank, int64_t leaf, int64_t branches, const Cell cells[], const Base basis[], const CSR rels_near[], const CSR rels_far[], const ColCommMPI comm[], int64_t levels) {
   int64_t work_size = 0;
-
   for (int64_t i = 0; i <= levels; i++) {
     int64_t n_i = 0, ulen = 0, nloc = 0;
     content_length(&n_i, &ulen, &nloc, &comm[i]);
@@ -501,6 +500,11 @@ void allocNodes(Node A[], double** Workspace, int64_t* Lwork, int64_t rank, int6
     A[i].lenA = nnz;
     A[i].lenS = nnz_f;
 
+    A[i].X = std::vector<Matrix>(ulen);
+    A[i].Xc = std::vector<Matrix>(ulen);
+    A[i].Xo = std::vector<Matrix>(ulen);
+    A[i].B = std::vector<Matrix>(ulen);
+
     int64_t dimn = i == levels ? leaf : (rank * branches);
     int64_t dims = std::min(rank, dimn);
     int64_t dimr = dimn - dims;
@@ -511,6 +515,7 @@ void allocNodes(Node A[], double** Workspace, int64_t* Lwork, int64_t rank, int6
     A[i].sizeU = stride * ulen + n_i * dimr;
     A[i].A_ptr = (double*)calloc(A[i].sizeA, sizeof(double));
     A[i].X_ptr = (double*)calloc(dimn * ulen, sizeof(double));
+    A[i].B_ptr = (double*)calloc(dimn * ulen, sizeof(double));
     A[i].U_ptr = (double*)calloc(A[i].sizeU, sizeof(double));
 
     for (int64_t j = nloc; j < (nloc + n_i); j++) {
@@ -531,15 +536,14 @@ void allocNodes(Node A[], double** Workspace, int64_t* Lwork, int64_t rank, int6
     }
     neighbor_bcast_cpu(A[i].U_ptr, stride, &comm[i]);
 
-    int64_t k1, k2;
-    countMaxIJ(&k1, &k2, &rels_near[i]);
-    int64_t acc_required = std::max(k1 * ulen, k2 * n_i);
-    int64_t work_required = std::max(n_i * stride, (acc_required + n_i) * dimn);
-    work_size = std::max(work_size, work_required);
-
     for (int64_t x = 0; x < n_i; x++) {
       for (int64_t yx = rels_near[i].RowIndex[x]; yx < rels_near[i].RowIndex[x + 1]; yx++)
         arr_m[yx] = (Matrix) { &A[i].A_ptr[yx * stride], dimn, dimn, dimn }; // A
+    }
+
+    for (int64_t y = 0; y < ulen; y++) {
+      A[i].X[y] = (Matrix) { &(A[i].X_ptr)[y * dimn], dimn, 1, dimn }; // X
+      A[i].B[y] = (Matrix) { &(A[i].B_ptr)[y * dimn], dimn, 1, dimn }; // B
     }
 
     if (0 < i) {
@@ -557,7 +561,22 @@ void allocNodes(Node A[], double** Workspace, int64_t* Lwork, int64_t rank, int6
           arr_m[yx + nnz] = (Matrix) { s_ptr, dims, dims, dimn_up }; // S
         }
       }
+
+      for (int64_t y = 0; y < ulen; y++) {
+        std::pair<int64_t, int64_t> p = basis[i].LocalParent[y];
+        double* x_next = &(A[i - 1].X_ptr)[std::get<1>(p) * dims + std::get<0>(p) * dimn_up];
+        A[i].Xo[y] = (Matrix) { x_next, dims, 1, dims }; // Xo
+
+        double* b_next = &(A[i - 1].B_ptr)[std::get<1>(p) * dims + std::get<0>(p) * dimn_up];
+        A[i].Xc[y] = (Matrix) { b_next, dims, 1, dims }; // Xc
+      }
     }
+
+    int64_t k1, k2;
+    countMaxIJ(&k1, &k2, &rels_near[i]);
+    int64_t acc_required = std::max(k1 * ulen, k2 * n_i);
+    int64_t work_required = std::max(n_i * stride, (acc_required + n_i) * dimn);
+    work_size = std::max(work_size, work_required);
   }
   
   set_work_size(work_size, Workspace, Lwork);
@@ -607,85 +626,49 @@ void allocNodes(Node A[], double** Workspace, int64_t* Lwork, int64_t rank, int6
 void node_free(Node* node) {
   free(node->A_ptr);
   free(node->X_ptr);
+  free(node->B_ptr);
   free(node->U_ptr);
   free(node->A);
   batchParamsDestory(&node->params);
 }
 
-void allocRightHandSidesMV(RightHandSides rhs[], const Base base[], const ColCommMPI comm[], int64_t levels) {
-  for (int64_t l = 0; l <= levels; l++) {
-    int64_t len;
-    content_length(NULL, &len, NULL, &comm[l]);
-    int64_t len_arr = len * 4;
-    Matrix* arr_m = (Matrix*)calloc(len_arr, sizeof(Matrix));
-    rhs[l].X = arr_m;
-    rhs[l].B = &arr_m[len];
-    rhs[l].Xo = &arr_m[len * 2];
-    rhs[l].Xc = &arr_m[len * 3];
-
-    int64_t len_data = len * base[l].dimN * 2;
-    double* data = (double*)calloc(len_data, sizeof(double));
-    for (int64_t i = 0; i < len; i++) {
-      std::pair<int64_t, int64_t> p = base[l].LocalParent[i];
-      arr_m[i] = (Matrix) { &data[i * base[l].dimN], base[l].dimN, 1, base[l].dimN }; // X
-      arr_m[i + len] = (Matrix) { &data[len * base[l].dimN + i * base[l].dimN], base[l].dimN, 1, base[l].dimN }; // B
-
-      double* x_next = (l == 0) ? NULL : &rhs[l - 1].X[0].A[std::get<1>(p) * base[l].dimS + std::get<0>(p) * base[l - 1].dimN];
-      arr_m[i + len * 2] = (Matrix) { x_next, base[l].dimS, 1, base[l].dimS }; // Xo
-
-      double* b_next = (l == 0) ? NULL : &rhs[l - 1].B[0].A[std::get<1>(p) * base[l].dimS + std::get<0>(p) * base[l - 1].dimN];
-      arr_m[i + len * 3] = (Matrix) { b_next, base[l].dimS, 1, base[l].dimS }; // Xc
-    }
-  }
-}
-
-void rightHandSides_free(RightHandSides* rhs) {
-  double* data = rhs->X[0].A;
-  if (data)
-    free(data);
-  free(rhs->X);
-}
-
-void matVecA(const Node A[], const Base basis[], const CSR rels_near[], double* X, const ColCommMPI comm[], int64_t levels) {
+void matVecA(Node A[], const Base basis[], const CSR rels_near[], double* X, const ColCommMPI comm[], int64_t levels) {
   int64_t lbegin = 0, llen = 0;
   content_length(&llen, NULL, &lbegin, &comm[levels]);
 
-  std::vector<RightHandSides> rhs(levels + 1);
-  allocRightHandSidesMV(&rhs[0], basis, comm, levels);
-  memcpy(rhs[levels].X[lbegin].A, X, llen * basis[levels].dimN * sizeof(double));
+  memcpy(A[levels].X[lbegin].A, X, llen * basis[levels].dimN * sizeof(double));
 
   for (int64_t i = levels; i > 0; i--) {
     int64_t ibegin = 0, iboxes = 0, xlen = 0;
     content_length(&iboxes, &xlen, &ibegin, &comm[i]);
 
-    level_merge_cpu(rhs[i].X[0].A, xlen * basis[i].dimN, &comm[i]);
-    neighbor_bcast_cpu(rhs[i].X[0].A, basis[i].dimN, &comm[i]);
-    dup_bcast_cpu(rhs[i].X[0].A, xlen * basis[i].dimN, &comm[i]);
+    level_merge_cpu(A[i].X[0].A, xlen * basis[i].dimN, &comm[i]);
+    neighbor_bcast_cpu(A[i].X[0].A, basis[i].dimN, &comm[i]);
+    dup_bcast_cpu(A[i].X[0].A, xlen * basis[i].dimN, &comm[i]);
 
     for (int64_t j = 0; j < iboxes; j++)
-      mmult('T', 'N', &basis[i].Uo[j + ibegin], &rhs[i].X[j + ibegin], &rhs[i].Xo[j + ibegin], 1., 0.);
+      mmult('T', 'N', &basis[i].Uo[j + ibegin], &A[i].X[j + ibegin], &A[i].Xo[j + ibegin], 1., 0.);
   }
 
-  level_merge_cpu(rhs[0].X[0].A, basis[0].dimN, &comm[0]);
-  dup_bcast_cpu(rhs[0].X[0].A, basis[0].dimN, &comm[0]);
-  mmult('N', 'N', &A[0].A[0], &rhs[0].X[0], &rhs[0].B[0], 1., 0.);
+  level_merge_cpu(A[0].X[0].A, basis[0].dimN, &comm[0]);
+  dup_bcast_cpu(A[0].X[0].A, basis[0].dimN, &comm[0]);
+  mmult('N', 'N', &A[0].A[0], &A[0].X[0], &A[0].B[0], 1., 0.);
+  memset(A[0].X[0].A, 0, sizeof(double) * basis[0].dimN);
 
   for (int64_t i = 1; i <= levels; i++) {
-    int64_t ibegin = 0, iboxes = 0;
-    content_length(&iboxes, NULL, &ibegin, &comm[i]);
+    int64_t ibegin = 0, iboxes = 0, ulen = 0;
+    content_length(&iboxes, &ulen, &ibegin, &comm[i]);
     for (int64_t j = 0; j < iboxes; j++)
-      mmult('N', 'N', &basis[i].Uo[j + ibegin], &rhs[i].Xc[j + ibegin], &rhs[i].B[j + ibegin], 1., 0.);
+      mmult('N', 'N', &basis[i].Uo[j + ibegin], &A[i].Xc[j + ibegin], &A[i].B[j + ibegin], 1., 0.);
     for (int64_t y = 0; y < iboxes; y++)
       for (int64_t xy = rels_near[i].RowIndex[y]; xy < rels_near[i].RowIndex[y + 1]; xy++) {
         int64_t x = rels_near[i].ColIndex[xy];
-        mmult('N', 'N', &A[i].A[xy], &rhs[i].X[x], &rhs[i].B[y + ibegin], 1., 1.);
+        mmult('N', 'N', &A[i].A[xy], &A[i].X[x], &A[i].B[y + ibegin], 1., 1.);
       }
+    memset(A[i].X_ptr, 0, sizeof(double) * ulen * basis[i].dimN);
   }
-  memcpy(X, rhs[levels].B[lbegin].A, llen * basis[levels].dimN * sizeof(double));
-  for (int64_t i = 0; i <= levels; i++)
-    rightHandSides_free(&rhs[i]);
+  memcpy(X, A[levels].B[lbegin].A, llen * basis[levels].dimN * sizeof(double));
 }
-
 
 void solveRelErr(double* err_out, const double* X, const double* ref, int64_t lenX) {
   double err[2] = { 0., 0. };
