@@ -2,9 +2,7 @@
 #include <basis.hpp>
 #include <build_tree.hpp>
 #include <comm-mpi.hpp>
-#include <gpu_linalg.hpp>
 #include <linalg.hpp>
-#include <umv.hpp>
 #include <geometry.hpp>
 #include <kernel.hpp>
 #include <profile.hpp>
