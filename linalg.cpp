@@ -6,6 +6,7 @@
 #include <comm-mpi.hpp>
 
 #include "mkl.h"
+#include <eigen3/Eigen/Dense>
 
 #include <vector>
 #include <algorithm>
@@ -16,16 +17,6 @@
 #include <array>
 #include <tuple>
 #include <iostream>
-
-void mmult(char ta, char tb, const Matrix* A, const Matrix* B, Matrix* C, double alpha, double beta) {
-  int64_t k = ta == 'N' ? A->N : A->M;
-  CBLAS_TRANSPOSE tac = ta == 'N' ? CblasNoTrans : CblasTrans;
-  CBLAS_TRANSPOSE tbc = tb == 'N' ? CblasNoTrans : CblasTrans;
-  int64_t lda = 1 < A->LDA ? A->LDA : 1;
-  int64_t ldb = 1 < B->LDA ? B->LDA : 1;
-  int64_t ldc = 1 < C->LDA ? C->LDA : 1;
-  cblas_dgemm(CblasColMajor, tac, tbc, C->M, C->N, k, alpha, A->A, lda, B->A, ldb, beta, C->A, ldc);
-}
 
 void mul_AS(const Matrix* RU, const Matrix* RV, Matrix* A) {
   if (A->M > 0 && A->N > 0) {
@@ -643,8 +634,13 @@ void node_free(Node* node) {
 }
 
 void matVecA(Node A[], const CSR rels_near[], double* X, const ColCommMPI comm[], int64_t levels) {
+  typedef Eigen::Map<Eigen::VectorXd> Vector_t;
+  typedef Eigen::Map<Eigen::MatrixXd> Matrix_t;
+
   int64_t lbegin = comm[levels].oLocal(), llen = comm[levels].lenLocal();
-  memcpy(A[levels].X[lbegin].A, X, llen * A[levels].Nleaf * sizeof(double));
+  Vector_t Xleaf(A[levels].X_ptr + lbegin * A[levels].Nleaf, llen * A[levels].Nleaf);
+  Vector_t Xptr(X, llen * A[levels].Nleaf);
+  Xleaf = Xptr;
 
   for (int64_t i = levels; i >= 0; i--) {
     int64_t ibegin = comm[i].oLocal(), iboxes = comm[i].lenLocal(), xlen = comm[i].lenNeighbors();
@@ -653,24 +649,41 @@ void matVecA(Node A[], const CSR rels_near[], double* X, const ColCommMPI comm[]
     comm[i].neighbor_bcast(A[i].X_ptr, sizes.data());
 
     if (0 < i)
-      for (int64_t j = 0; j < iboxes; j++)
-        mmult('T', 'N', &A[i].U[j + ibegin], &A[i].X[j + ibegin], &A[i].Xo[j + ibegin], 1., 0.);
+      for (int64_t j = 0; j < iboxes; j++) {
+        Matrix_t U(A[i].U[j + ibegin].A, A[i].Nleaf, A[i].Nrank);
+        Vector_t X(A[i].X[j + ibegin].A, A[i].Nleaf);
+        Vector_t Xo(A[i].Xo[j + ibegin].A, A[i].Nrank);
+        Xo = U.adjoint() * X;
+      }
   }
 
   for (int64_t i = 0; i <= levels; i++) {
     int64_t ibegin = comm[i].oLocal(), iboxes = comm[i].lenLocal(), ulen = comm[i].lenNeighbors();
     if (0 < i)
-      for (int64_t j = 0; j < iboxes; j++)
-        mmult('N', 'N', &A[i].U[j + ibegin], &A[i].Xc[j + ibegin], &A[i].B[j + ibegin], 1., 0.);
+      for (int64_t j = 0; j < iboxes; j++) {
+        Matrix_t U(A[i].U[j + ibegin].A, A[i].Nleaf, A[i].Nrank);
+        Vector_t B(A[i].B[j + ibegin].A, A[i].Nleaf);
+        Vector_t Bo(A[i].Xc[j + ibegin].A, A[i].Nrank);
+        B = U * Bo;
+      }
+    else
+      Vector_t(A[i].B_ptr, A[i].Nleaf) = Vector_t::Zero(A[i].Nleaf);
     
     for (int64_t y = 0; y < iboxes; y++)
       for (int64_t yx = rels_near[i].RowIndex[y]; yx < rels_near[i].RowIndex[y + 1]; yx++) {
         int64_t x = rels_near[i].ColIndex[yx];
-        mmult('N', 'N', &A[i].A[yx], &A[i].X[x], &A[i].B[y + ibegin], 1., 1.);
+
+        Matrix_t Ayx(A[i].A[yx].A, A[i].Nleaf, A[i].Nleaf);
+        Vector_t B(A[i].B[y + ibegin].A, A[i].Nleaf);
+        Vector_t X(A[i].X[x].A, A[i].Nleaf);
+        B += Ayx * X;
       }
-    memset(A[i].X_ptr, 0, sizeof(double) * ulen * A[i].Nleaf);
+
+    Vector_t(A[i].X_ptr, ulen * A[i].Nleaf) = Vector_t::Zero(ulen * A[i].Nleaf);
   }
-  memcpy(X, A[levels].B[lbegin].A, llen * A[levels].Nleaf * sizeof(double));
+
+  Vector_t Bleaf(A[levels].B_ptr + lbegin * A[levels].Nleaf, llen * A[levels].Nleaf);
+  Xptr = Bleaf;
 }
 
 void solveRelErr(double* err_out, const double* X, const double* ref, int64_t lenX) {
