@@ -489,26 +489,31 @@ void memcpy2d(T* dst, const T* src, int64_t rows, int64_t cols, int64_t ld_dst, 
 void allocNodes(Node A[], double** Workspace, int64_t* Lwork, int64_t rank, int64_t leaf, int64_t branches, const Cell cells[], const Base basis[], const CSR rels_near[], const CSR rels_far[], const ColCommMPI comm[], int64_t levels) {
   int64_t work_size = 0;
   for (int64_t i = 0; i <= levels; i++) {
-    int64_t n_i = 0, ulen = 0, nloc = 0;
-    content_length(&n_i, &ulen, &nloc, &comm[i]);
+    int64_t n_i = comm[i].lenLocal(), ulen = comm[i].lenNeighbors(), nloc = comm[i].oLocal();
     int64_t nnz = rels_near[i].RowIndex[n_i];
     int64_t nnz_f = rels_far[i].RowIndex[n_i];
 
-    Matrix* arr_m = (Matrix*)malloc(sizeof(Matrix) * (nnz + nnz_f));
-    A[i].A = arr_m;
-    A[i].S = &arr_m[nnz];
-    A[i].lenA = nnz;
-    A[i].lenS = nnz_f;
+    A[i].A = std::vector<Matrix>(nnz);
+    A[i].A_rr = std::vector<Matrix>(nnz);
+    A[i].A_rs = std::vector<Matrix>(nnz);
+    A[i].A_sr = std::vector<Matrix>(nnz);
+    A[i].A_ss = std::vector<Matrix>(nnz);
+    A[i].S = std::vector<Matrix>(nnz_f);
 
     A[i].X = std::vector<Matrix>(ulen);
     A[i].Xc = std::vector<Matrix>(ulen);
     A[i].Xo = std::vector<Matrix>(ulen);
     A[i].B = std::vector<Matrix>(ulen);
 
+    A[i].U = std::vector<Matrix>(ulen);
+    A[i].Uc = std::vector<Matrix>(ulen);
+
     int64_t dimn = i == levels ? leaf : (rank * branches);
     int64_t dims = std::min(rank, dimn);
     int64_t dimr = dimn - dims;
     int64_t dimn_up = rank * branches;
+    A[i].Nleaf = dimn;
+    A[i].Nrank = dims;
 
     int64_t stride = dimn * dimn;
     A[i].sizeA = stride * nnz;
@@ -536,29 +541,43 @@ void allocNodes(Node A[], double** Workspace, int64_t* Lwork, int64_t rank, int6
     }
     neighbor_bcast_cpu(A[i].U_ptr, stride, &comm[i]);
 
-    for (int64_t x = 0; x < n_i; x++) {
-      for (int64_t yx = rels_near[i].RowIndex[x]; yx < rels_near[i].RowIndex[x + 1]; yx++)
-        arr_m[yx] = (Matrix) { &A[i].A_ptr[yx * stride], dimn, dimn, dimn }; // A
-    }
+    for (int64_t x = 0; x < n_i; x++)
+      for (int64_t yx = rels_near[i].RowIndex[x]; yx < rels_near[i].RowIndex[x + 1]; yx++) {
+        A[i].A[yx] = (Matrix) { &A[i].A_ptr[yx * stride], dimn, dimn, dimn }; // A
+        A[i].A_rr[yx] = (Matrix) { &A[i].A_ptr[yx * stride], dimr, dimr, dimn }; // Arr
+        A[i].A_rs[yx] = (Matrix) { &A[i].A_ptr[yx * stride + dimr * dimn], dimr, dims, dimn }; // Ars
+        A[i].A_sr[yx] = (Matrix) { &A[i].A_ptr[yx * stride + dimr], dims, dimr, dimn }; // Ars
+      }
 
     for (int64_t y = 0; y < ulen; y++) {
       A[i].X[y] = (Matrix) { &(A[i].X_ptr)[y * dimn], dimn, 1, dimn }; // X
       A[i].B[y] = (Matrix) { &(A[i].B_ptr)[y * dimn], dimn, 1, dimn }; // B
+      A[i].U[y] = (Matrix) { &A[i].U_ptr[y * stride + dimr * dimn], dimn, dims, dimn }; // U
+      A[i].Uc[y] = (Matrix) { &A[i].U_ptr[y * stride], dimn, dimr, dimn }; // Uc
     }
 
     if (0 < i) {
-      int64_t ploc = 0;
-      content_length(NULL, NULL, &ploc, &comm[i - 1]);
+      int64_t ploc = comm[i - 1].oLocal();
 
       for (int64_t x = 0; x < n_i; x++) {
-        for (int64_t yx = rels_far[i].RowIndex[x]; yx < rels_far[i].RowIndex[x + 1]; yx++) {
-          int64_t y = rels_far[i].ColIndex[yx];
-          std::pair<int64_t, int64_t> px = basis[i].LocalParent[x + nloc];
+        std::pair<int64_t, int64_t> px = basis[i].LocalParent[x + nloc];
+
+        for (int64_t yx = rels_near[i].RowIndex[x]; yx < rels_near[i].RowIndex[x + 1]; yx++) {
+          int64_t y = rels_near[i].ColIndex[yx];
           std::pair<int64_t, int64_t> py = basis[i].LocalParent[y];
           int64_t ij = rels_near[i - 1].lookupIJ(std::get<0>(py), std::get<0>(px) - ploc);
           double* s_ptr = &A[i - 1].A_ptr[(std::get<1>(py) * dimn_up + std::get<1>(px)) * dims + ij * dimn_up * dimn_up];
 
-          arr_m[yx + nnz] = (Matrix) { s_ptr, dims, dims, dimn_up }; // S
+          A[i].A_ss[yx] = (Matrix) { s_ptr, dims, dims, dimn_up }; // Ass
+        }
+
+        for (int64_t yx = rels_far[i].RowIndex[x]; yx < rels_far[i].RowIndex[x + 1]; yx++) {
+          int64_t y = rels_far[i].ColIndex[yx];
+          std::pair<int64_t, int64_t> py = basis[i].LocalParent[y];
+          int64_t ij = rels_near[i - 1].lookupIJ(std::get<0>(py), std::get<0>(px) - ploc);
+          double* s_ptr = &A[i - 1].A_ptr[(std::get<1>(py) * dimn_up + std::get<1>(px)) * dims + ij * dimn_up * dimn_up];
+
+          A[i].S[yx] = (Matrix) { s_ptr, dims, dims, dimn_up }; // S
         }
       }
 
@@ -583,7 +602,7 @@ void allocNodes(Node A[], double** Workspace, int64_t* Lwork, int64_t rank, int6
   for (int64_t i = levels; i > 0; i--) {
     int64_t ibegin = 0, N_rows = 0, N_cols = 0;
     content_length(&N_cols, &N_rows, &ibegin, &comm[i]);
-    int64_t nnz = A[i].lenA;
+    int64_t nnz = rels_near[i].RowIndex[N_cols];
     int64_t dimn = i == levels ? leaf : (rank * branches);
     int64_t dims = std::min(rank, dimn);
     int64_t dimr = dimn - dims;
@@ -592,20 +611,12 @@ void allocNodes(Node A[], double** Workspace, int64_t* Lwork, int64_t rank, int6
     content_length(NULL, NULL, &ibegin_next, &comm[i - 1]);
 
     std::vector<double*> A_next(nnz);
-    for (int64_t x = 0; x < N_cols; x++)
-      for (int64_t yx = rels_near[i].RowIndex[x]; yx < rels_near[i].RowIndex[x + 1]; yx++) {
-        int64_t y = rels_near[i].ColIndex[yx];
-        std::pair<int64_t, int64_t> px = basis[i].LocalParent[x + ibegin];
-        std::pair<int64_t, int64_t> py = basis[i].LocalParent[y];
-        int64_t ij = rels_near[i - 1].lookupIJ(std::get<0>(py), std::get<0>(px) - ibegin_next);
-        A_next[yx] = &A[i - 1].A_ptr[(std::get<1>(py) * dimn_up + std::get<1>(px)) * dims + ij * dimn_up * dimn_up];
-      }
+    for (int64_t x = 0; x < nnz; x++)
+      A_next[x] = A[i].A_ss[x].A;
 
     std::vector<double*> X_next(N_rows);
-    for (int64_t x = 0; x < N_rows; x++) { 
-      std::pair<int64_t, int64_t> p = basis[i].LocalParent[x];
-      X_next[x] = &A[i - 1].X_ptr[std::get<1>(p) * dims + std::get<0>(p) * dimn_up];
-    }
+    for (int64_t x = 0; x < N_rows; x++)
+      X_next[x] = A[i].Xo[x].A;
 
     batchParamsCreate(&A[i].params, dimr, dims, A[i].U_ptr, A[i].A_ptr, A[i].X_ptr, dimn_up, &A_next[0], &X_next[0],
       *Workspace, work_size, N_rows, N_cols, ibegin, &rels_near[i].ColIndex[0], &rels_near[i].RowIndex[0]);
@@ -628,46 +639,38 @@ void node_free(Node* node) {
   free(node->X_ptr);
   free(node->B_ptr);
   free(node->U_ptr);
-  free(node->A);
   batchParamsDestory(&node->params);
 }
 
-void matVecA(Node A[], const Base basis[], const CSR rels_near[], double* X, const ColCommMPI comm[], int64_t levels) {
-  int64_t lbegin = 0, llen = 0;
-  content_length(&llen, NULL, &lbegin, &comm[levels]);
+void matVecA(Node A[], const CSR rels_near[], double* X, const ColCommMPI comm[], int64_t levels) {
+  int64_t lbegin = comm[levels].oLocal(), llen = comm[levels].lenLocal();
+  memcpy(A[levels].X[lbegin].A, X, llen * A[levels].Nleaf * sizeof(double));
 
-  memcpy(A[levels].X[lbegin].A, X, llen * basis[levels].dimN * sizeof(double));
+  for (int64_t i = levels; i >= 0; i--) {
+    int64_t ibegin = comm[i].oLocal(), iboxes = comm[i].lenLocal(), xlen = comm[i].lenNeighbors();
+    std::vector<long long> sizes(xlen, A[i].Nleaf);
+    comm[i].level_merge(A[i].X_ptr, xlen * A[i].Nleaf);
+    comm[i].neighbor_bcast(A[i].X_ptr, sizes.data());
 
-  for (int64_t i = levels; i > 0; i--) {
-    int64_t ibegin = 0, iboxes = 0, xlen = 0;
-    content_length(&iboxes, &xlen, &ibegin, &comm[i]);
-
-    level_merge_cpu(A[i].X[0].A, xlen * basis[i].dimN, &comm[i]);
-    neighbor_bcast_cpu(A[i].X[0].A, basis[i].dimN, &comm[i]);
-    dup_bcast_cpu(A[i].X[0].A, xlen * basis[i].dimN, &comm[i]);
-
-    for (int64_t j = 0; j < iboxes; j++)
-      mmult('T', 'N', &basis[i].Uo[j + ibegin], &A[i].X[j + ibegin], &A[i].Xo[j + ibegin], 1., 0.);
+    if (0 < i)
+      for (int64_t j = 0; j < iboxes; j++)
+        mmult('T', 'N', &A[i].U[j + ibegin], &A[i].X[j + ibegin], &A[i].Xo[j + ibegin], 1., 0.);
   }
 
-  level_merge_cpu(A[0].X[0].A, basis[0].dimN, &comm[0]);
-  dup_bcast_cpu(A[0].X[0].A, basis[0].dimN, &comm[0]);
-  mmult('N', 'N', &A[0].A[0], &A[0].X[0], &A[0].B[0], 1., 0.);
-  memset(A[0].X[0].A, 0, sizeof(double) * basis[0].dimN);
-
-  for (int64_t i = 1; i <= levels; i++) {
-    int64_t ibegin = 0, iboxes = 0, ulen = 0;
-    content_length(&iboxes, &ulen, &ibegin, &comm[i]);
-    for (int64_t j = 0; j < iboxes; j++)
-      mmult('N', 'N', &basis[i].Uo[j + ibegin], &A[i].Xc[j + ibegin], &A[i].B[j + ibegin], 1., 0.);
+  for (int64_t i = 0; i <= levels; i++) {
+    int64_t ibegin = comm[i].oLocal(), iboxes = comm[i].lenLocal(), ulen = comm[i].lenNeighbors();
+    if (0 < i)
+      for (int64_t j = 0; j < iboxes; j++)
+        mmult('N', 'N', &A[i].U[j + ibegin], &A[i].Xc[j + ibegin], &A[i].B[j + ibegin], 1., 0.);
+    
     for (int64_t y = 0; y < iboxes; y++)
-      for (int64_t xy = rels_near[i].RowIndex[y]; xy < rels_near[i].RowIndex[y + 1]; xy++) {
-        int64_t x = rels_near[i].ColIndex[xy];
-        mmult('N', 'N', &A[i].A[xy], &A[i].X[x], &A[i].B[y + ibegin], 1., 1.);
+      for (int64_t yx = rels_near[i].RowIndex[y]; yx < rels_near[i].RowIndex[y + 1]; yx++) {
+        int64_t x = rels_near[i].ColIndex[yx];
+        mmult('N', 'N', &A[i].A[yx], &A[i].X[x], &A[i].B[y + ibegin], 1., 1.);
       }
-    memset(A[i].X_ptr, 0, sizeof(double) * ulen * basis[i].dimN);
+    memset(A[i].X_ptr, 0, sizeof(double) * ulen * A[i].Nleaf);
   }
-  memcpy(X, A[levels].B[lbegin].A, llen * basis[levels].dimN * sizeof(double));
+  memcpy(X, A[levels].B[lbegin].A, llen * A[levels].Nleaf * sizeof(double));
 }
 
 void solveRelErr(double* err_out, const double* X, const double* ref, int64_t lenX) {

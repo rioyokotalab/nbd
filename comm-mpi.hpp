@@ -58,10 +58,6 @@ public:
 class Cell;
 class CSR;
 
-void buildComm(ColCommMPI* comms, int64_t ncells, const Cell* cells, const CSR* cellFar, const CSR* cellNear, int64_t levels);
-
-void cellComm_free(ColCommMPI* comms, int64_t levels);
-
 void content_length(int64_t* local, int64_t* neighbors, int64_t* local_off, const ColCommMPI* comm);
 
 void neighbor_bcast_sizes_cpu(int64_t* data, const ColCommMPI* comm);

@@ -99,9 +99,9 @@ int main(int argc, char* argv[]) {
   int64_t Lwork = 0;
   allocNodes(nodes, &Workspace, &Lwork, rank_max, leaf_size, tree_part, cell, basis, rels_near, rels_far, cell_comm, levels);
 
-  evalD(eval, nodes[levels].A, &cellNear, cell, body, &cell_comm[levels]);
+  evalD(eval, &nodes[levels].A[0], &cellNear, cell, body, &cell_comm[levels]);
   for (int64_t i = 0; i <= levels; i++)
-    evalS(eval, nodes[i].S, &basis[i], &rels_far[i], &cell_comm[i]);
+    evalS(eval, &nodes[i].S[0], &basis[i], &rels_far[i], &cell_comm[i]);
 
   int64_t lenX = rels_near[levels].N * basis[levels].dimN;
   double* X1 = (double*)calloc(lenX, sizeof(double));
@@ -109,7 +109,7 @@ int main(int argc, char* argv[]) {
 
   loadX(X2, basis[levels].dimN, Xbody, 0, llen, &cell[gbegin]);
   double matvec_time = MPI_Wtime(), matvec_comm_time;
-  matVecA(nodes, basis, rels_near, X2, cell_comm, levels);
+  matVecA(nodes, rels_near, X2, cell_comm, levels);
 
   matvec_time = MPI_Wtime() - matvec_time;
   matvec_comm_time = 0;

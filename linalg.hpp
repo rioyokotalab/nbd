@@ -25,9 +25,10 @@ public:
 
 class Node {
 public:
-  int64_t lenA, lenS;
-  Matrix *A, *S;
-  std::vector<Matrix> X, Xc, Xo, B; 
+  int64_t Nleaf, Nrank;
+  std::vector<Matrix> A, S, A_rr, A_rs, A_sr, A_ss;
+  std::vector<Matrix> X, Xc, Xo, B;
+  std::vector<Matrix> U, Uc;
   double* A_ptr;
   double* X_ptr, *B_ptr;
   double* U_ptr;
@@ -69,7 +70,7 @@ void chol_solve(BatchedFactorParams* params, const ColCommMPI* comm);
 void allocNodes(Node A[], double** Workspace, int64_t* Lwork, int64_t rank, int64_t leaf, int64_t branches, const Cell cells[], const Base basis[], const CSR rels_near[], const CSR rels_far[], const ColCommMPI comm[], int64_t levels);
 void node_free(Node* node);
 
-void matVecA(Node A[], const Base basis[], const CSR rels_near[], double* X, const ColCommMPI comm[], int64_t levels);
+void matVecA(Node A[], const CSR rels_near[], double* X, const ColCommMPI comm[], int64_t levels);
 
 void solveRelErr(double* err_out, const double* X, const double* ref, int64_t lenX);
 
