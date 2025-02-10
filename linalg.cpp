@@ -2,7 +2,8 @@
 #include <linalg.hpp>
 #include <kernel.hpp>
 
-#include "mkl.h"
+#include "cblas.h"
+#include "lapacke.h"
 
 #include <vector>
 #include <algorithm>
@@ -55,7 +56,7 @@ void compute_basis(const EvalDouble& eval, int64_t rank_max,
   if (M > 0 && (Nclose > 0 || Nfar > 0)) {
     int64_t ldm = std::max(M, Nclose + Nfar);
     std::vector<double> Aall(M * ldm, 0.), U(M * M), S(M * 2);
-    std::vector<long long> ipiv(M);
+    std::vector<int32_t> ipiv(M);
     gen_matrix(eval, Nclose, M, Cbodies, Xbodies, &Aall[0], ldm);
     gen_matrix(eval, Nfar, M, Fbodies, Xbodies, &Aall[Nclose], ldm);
 
@@ -67,7 +68,7 @@ void compute_basis(const EvalDouble& eval, int64_t rank_max,
     int64_t rank = rank_max <= 0 ? M : std::min(rank_max, M);    
     if (rank > 0) {
       if (rank < M)
-        LAPACKE_dgesv(LAPACK_COL_MAJOR, rank, M - rank, &U[0], M, (long long*)&S[0], &U[rank * M], M);
+        LAPACKE_dgesv(LAPACK_COL_MAJOR, rank, M - rank, &U[0], M, (int32_t*)&S[0], &U[rank * M], M);
       LAPACKE_dlaset(LAPACK_COL_MAJOR, 'F', rank, rank, 0., 1., &U[0], M);
     }
 
@@ -85,7 +86,8 @@ void compute_basis(const EvalDouble& eval, int64_t rank_max,
       LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'A', 'O', M, rank, &U[0], M, &S[0], A, LDA, &U[0], M, &S[M]);
 
       for (int64_t i = 0; i < rank; i++)
-        vdMul(rank, &S[0], &U[i * M], &A[(M + i) * LDA]);
+        for (int64_t j = 0; j < rank; j++)
+          A[(M + i) * LDA + j] = S[j] * U[i * M + j];
     }
   }
 }
