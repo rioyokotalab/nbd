@@ -1,6 +1,5 @@
 
 #include <build_tree.hpp>
-#include <kernel.hpp>
 #include <linalg.hpp>
 #include <comm.hpp>
 #include <basis.hpp>

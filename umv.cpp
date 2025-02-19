@@ -12,6 +12,7 @@
 
 #include <cstdlib>
 #include <algorithm>
+#include <Eigen/Dense>
 
 class RightHandSides { public: Matrix *X, *Xc, *Xo, *B; };
 
@@ -92,11 +93,11 @@ void matVecA(const Node A[], const Base basis[], const CSR rels_near[], double* 
 
 void solveRelErr(double* err_out, const double* X, const double* ref, int64_t lenX) {
   double err[2] = { 0., 0. };
-  for (int64_t i = 0; i < lenX; i++) {
-    double diff = X[i] - ref[i];
-    err[0] = err[0] + diff * diff;
-    err[1] = err[1] + ref[i] * ref[i];
-  }
+  Eigen::Map<const Eigen::VectorXd> vecX(X, lenX);
+  Eigen::Map<const Eigen::VectorXd> vecR(ref, lenX);
+  err[0] = (vecX - vecR).dot(vecX - vecR);
+  err[1] = vecR.dot(vecR);
+
   MPI_Allreduce(MPI_IN_PLACE, err, 2, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
   *err_out = sqrt(err[0] / err[1]);
 }

@@ -1,17 +1,123 @@
 
 #include <linalg.hpp>
-#include <kernel.hpp>
+#include <build_tree.hpp>
 
 #include "cblas.h"
 #include "lapacke.h"
 
-#include <vector>
 #include <algorithm>
 #include <numeric>
 #include <cstdio>
 #include <cstdlib>
 #include <array>
 #include <tuple>
+#include <random>
+#include <Eigen/Dense>
+#include <Eigen/SVD>
+#include <Eigen/QR>
+
+DenseZMat::DenseZMat(int64_t M, int64_t N) : MatrixAcc(M, N), A(nullptr) {
+  if (0 < M && 0 < N) {
+    A = (std::complex<double>*)malloc(M * N * sizeof(std::complex<double>));
+    std::fill(A, &A[M * N], 0.);
+  }
+}
+
+DenseZMat::~DenseZMat() {
+  if (A)
+    free(A);
+}
+
+void DenseZMat::op_Aij_mulB(char opA, int64_t mC, int64_t nC, int64_t k, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const {
+  Eigen::Stride<Eigen::Dynamic, 1> lda(M, 1), ldb(strideB, 1), ldc(strideC, 1);
+  Eigen::Map<Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> matC(C_out, mC, nC, ldc);
+  Eigen::Map<const Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> matB(B_in, k, nC, ldb);
+  if (opA == 'T' || opA == 't')
+    matC.noalias() = Eigen::Map<const Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>>(&A[iA + jA * M], k, mC, lda).transpose() * matB;
+  else if (opA == 'C' || opA == 'c')
+    matC.noalias() = Eigen::Map<const Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>>(&A[iA + jA * M], k, mC, lda).adjoint() * matB;
+  else
+    matC.noalias() = Eigen::Map<const Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>>(&A[iA + jA * M], mC, k, lda) * matB;
+}
+
+LowRankMatrix::LowRankMatrix(int64_t m, int64_t n, const MatrixAcc& eval, int64_t iA, int64_t jA) : M(m), N(n), rank(n), U(m * rank) {
+  Eigen::MatrixXcd id = Eigen::MatrixXcd::Identity(n, n);
+  eval.op_Aij_mulB('N', m, n, n, iA, jA, id.data(), n, U.data(), m);
+}
+
+LowRankMatrix::LowRankMatrix(double epi, int64_t m, int64_t n, int64_t k, int64_t p, int64_t niters, const MatrixAcc& eval, int64_t iA, int64_t jA) : M(m), N(n), rank(k), U(m * rank), V(N * rank), S(rank) {
+  Zrsvd(epi, m, n, &k, p, niters, eval, iA, jA, S.data(), U.data(), m, V.data(), n);
+
+  if (k < rank) {
+    rank = k;
+    U.resize(m * rank);
+    V.resize(n * rank);
+    S.resize(rank);
+  }
+  else if (0. < epi && k == rank && S[0] * epi < S[rank - 1]) {
+    rank = n;
+    U.resize(m * n);
+    V.clear();
+    S.clear();
+
+    Eigen::MatrixXcd id = Eigen::MatrixXcd::Identity(n, n);
+    eval.op_Aij_mulB('N', m, n, n, iA, jA, id.data(), n, U.data(), m);
+  }
+}
+
+Hmatrix::Hmatrix(double epi, const MatrixAcc& eval, int64_t rank, int64_t p, int64_t niters, int64_t lbegin, int64_t len, const Cell cells[], const CSR& Far) : lbegin(lbegin), lend(lbegin + len) {
+  int64_t llen = Far.RowIndex[lend] - Far.RowIndex[lbegin];
+  yOffsets.reserve(llen);
+  xOffsets.reserve(llen);
+  L.reserve(llen);
+  
+  for (int64_t y = lbegin; y < lend; y++) {
+    int64_t yi = cells[y].Body[0];
+    int64_t M = cells[y].Body[1] - yi;
+
+    for (int64_t yx = Far.RowIndex[y]; yx < Far.RowIndex[y + 1]; yx++) {
+      int64_t x = Far.ColIndex[yx];
+      int64_t xj = cells[x].Body[0];
+      yOffsets.emplace_back(yi);
+      xOffsets.emplace_back(xj);
+      L.emplace_back(epi, M, cells[x].Body[1] - xj, rank, p, niters, eval, yi, xj);
+    }
+  }
+}
+
+void Zrsvd(double epi, int64_t m, int64_t n, int64_t* k, int64_t p, int64_t niters, const MatrixAcc& A, int64_t iA, int64_t jA, double* S, std::complex<double>* U, int64_t ldu, std::complex<double>* V, int64_t ldv) {
+  int64_t rank = std::min(*k, std::min(m, n));
+  p = std::min(rank + p, std::min(m, n));
+  Eigen::MatrixXcd R(n, p), Q(m, p);
+  std::mt19937_64 gen;
+  std::normal_distribution<double> norm_dist(0., 1.);
+  std::generate(R.reshaped().begin(), R.reshaped().end(), [&]() { return std::complex<double>(norm_dist(gen), norm_dist(gen)); });
+
+  A.op_Aij_mulB('N', m, p, n, iA, jA, R.data(), n, Q.data(), m);
+  while (0 < --niters) {
+    Eigen::HouseholderQR<Eigen::MatrixXcd> qr(Q);
+    Q = qr.householderQ() * Eigen::MatrixXcd::Identity(m, p);
+    A.op_Aij_mulB('C', n, p, m, iA, jA, Q.data(), m, R.data(), n);
+    A.op_Aij_mulB('N', m, p, n, iA, jA, R.data(), n, Q.data(), m);
+  }
+
+  Eigen::HouseholderQR<Eigen::MatrixXcd> qr(Q);
+  Q = qr.householderQ() * Eigen::MatrixXcd::Identity(m, p);
+  A.op_Aij_mulB('C', n, p, m, iA, jA, Q.data(), m, R.data(), n);
+
+  Eigen::JacobiSVD<Eigen::MatrixXcd> svd(R, Eigen::ComputeThinU | Eigen::ComputeThinV);
+  if (0. < epi && epi < 1.)
+  { svd.setThreshold(epi); *k = rank = std::min(rank, (int64_t)svd.rank()); }
+
+  Eigen::Stride<Eigen::Dynamic, 1> ldU(ldu, 1), ldV(ldv, 1);
+  Eigen::Map<Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> matU(U, m, rank, ldU);
+  Eigen::Map<Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> matV(V, n, rank, ldV);
+  Eigen::Map<Eigen::VectorXd> vecS(S, rank);
+
+  vecS = svd.singularValues().topRows(rank);
+  matV = svd.matrixU().leftCols(rank);
+  matU.noalias() = Q * svd.matrixV().leftCols(rank);
+}
 
 void mmult(char ta, char tb, const Matrix* A, const Matrix* B, Matrix* C, double alpha, double beta) {
   int64_t k = ta == 'N' ? A->N : A->M;
@@ -91,26 +197,3 @@ void compute_basis(const EvalDouble& eval, int64_t rank_max,
     }
   }
 }
-
-
-void mat_vec_reference(const EvalDouble& eval, int64_t begin, int64_t end, double B[], int64_t nbodies, const double* bodies, const double Xbodies[]) {
-  int64_t M = end - begin;
-  int64_t N = nbodies;
-  int64_t size = 1024;
-  std::vector<double> A(size * size);
-  
-  for (int64_t i = 0; i < M; i += size) {
-    int64_t y = begin + i;
-    int64_t m = std::min(M - i, size);
-    const double* bi = &bodies[y * 3];
-    for (int64_t j = 0; j < N; j += size) {
-      const double* bj = &bodies[j * 3];
-      int64_t n = std::min(N - j, size);
-      gen_matrix(eval, m, n, bi, bj, &A[0], size);
-      cblas_dgemv(CblasColMajor, CblasNoTrans, m, n, 1., &A[0], size, &Xbodies[j], 1, 1., &B[i], 1);
-    }
-  }
-}
-
-
-

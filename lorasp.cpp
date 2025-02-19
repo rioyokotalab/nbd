@@ -6,9 +6,9 @@
 #include <linalg.hpp>
 #include <umv.hpp>
 #include <geometry.hpp>
-#include <kernel.hpp>
 #include <profile.hpp>
 
+#include <Eigen/Dense>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -30,12 +30,7 @@ int main(int argc, char* argv[]) {
   int64_t Nleaf = (int64_t)1 << levels;
   int64_t ncells = Nleaf + Nleaf - 1;
   
-  Laplace3D eval(1.);
-  //Yukawa3D eval(1.e-6, 1.);
-  //Gaussian eval(20);
-  
   double* body = (double*)malloc(sizeof(double) * Nbody * 3);
-  double* Xbody = (double*)malloc(sizeof(double) * Nbody);
   Cell* cell = (Cell*)calloc(ncells, sizeof(Cell));
   CSR cellNear, cellFar;
   CSR* rels_far = (CSR*)calloc(levels + 1, sizeof(CSR));
@@ -59,10 +54,20 @@ int main(int argc, char* argv[]) {
     buildTree(&ncells, cell, body, Nbody, levels);
     free(buckets);
   }
-  body_neutral_charge(Xbody, Nbody, 1., 999);
+
+  Eigen::VectorXd Xbody(Nbody);
+  body_neutral_charge(Xbody.data(), Nbody, 1., 999);
+  Eigen::VectorXcd vecX = Xbody;
 
   traverse('N', &cellNear, ncells, cell, theta);
   traverse('F', &cellFar, ncells, cell, theta);
+
+  Laplace3D eval(1.e-1);
+  Eigen::MatrixXd dataA(Nbody, Nbody);
+  gen_matrix(eval, Nbody, Nbody, body, body, dataA.data(), Nbody);
+
+  DenseZMat denseA(Nbody, Nbody);
+  Eigen::Map<Eigen::MatrixXcd>(denseA.A, Nbody, Nbody) = dataA;
 
   CommTimer timer;
   buildComm(cell_comm, ncells, cell, &cellFar, &cellNear, levels);
@@ -94,20 +99,21 @@ int main(int argc, char* argv[]) {
     evalS(eval, nodes[i].S, &basis[i], &rels_far[i], &cell_comm[i]);
 
   int64_t lenX = rels_near[levels].N * basis[levels].dimN;
-  double* X1 = (double*)calloc(lenX, sizeof(double));
-  double* X2 = (double*)calloc(lenX, sizeof(double));
+  Eigen::VectorXd X1(lenX), X2(lenX);
+  Eigen::VectorXcd X3(lenX);
 
-  loadX(X2, basis[levels].dimN, Xbody, 0, llen, &cell[gbegin]);
+  loadX(X2.data(), basis[levels].dimN, Xbody.data(), 0, llen, &cell[gbegin]);
   double matvec_time = MPI_Wtime(), matvec_comm_time;
-  matVecA(nodes, basis, rels_near, X2, cell_comm, levels);
+  matVecA(nodes, basis, rels_near, X2.data(), cell_comm, levels);
 
   matvec_time = MPI_Wtime() - matvec_time;
   matvec_comm_time = timer.get_comm_timing();
 
   double cerr = 0.;
   int64_t body_local[2] = { cell[gbegin].Body[0], cell[gbegin + llen - 1].Body[1] };
-  mat_vec_reference(eval, body_local[0], body_local[1], &X1[0], Nbody, body, Xbody);
-  solveRelErr(&cerr, X1, X2, lenX);
+  denseA.op_Aij_mulB('N', body_local[1] - body_local[0], 1, Nbody, body_local[0], 0, vecX.data(), Nbody, X3.data(), lenX);
+  X1 = X3.real();
+  solveRelErr(&cerr, X1.data(), X2.data(), lenX);
   
   factorA_mov_mem(nodes, levels);
   MPI_Barrier(MPI_COMM_WORLD);
@@ -137,7 +143,7 @@ int main(int argc, char* argv[]) {
   for (int i = 0; i < 3; i++)
     percent[i] = (double)factor_flops[i] / (double)sum_flops * (double)100;
 
-  cudaMemcpy(&nodes[levels].X_ptr[lbegin * basis[levels].dimN], X1, lenX * sizeof(double), cudaMemcpyHostToDevice);
+  cudaMemcpy(&nodes[levels].X_ptr[lbegin * basis[levels].dimN], X1.data(), lenX * sizeof(double), cudaMemcpyHostToDevice);
 
   MPI_Barrier(MPI_COMM_WORLD);
   double solve_time = MPI_Wtime(), solve_comm_time;
@@ -154,11 +160,11 @@ int main(int argc, char* argv[]) {
   solve_time = MPI_Wtime() - solve_time;
   solve_comm_time = timer.get_comm_timing();
 
-  cudaMemcpy(X1, &nodes[levels].X_ptr[lbegin * basis[levels].dimN], lenX * sizeof(double), cudaMemcpyDeviceToHost);
+  cudaMemcpy(X1.data(), &nodes[levels].X_ptr[lbegin * basis[levels].dimN], lenX * sizeof(double), cudaMemcpyDeviceToHost);
 
-  loadX(X2, basis[levels].dimN, Xbody, 0, llen, &cell[gbegin]);
+  loadX(X2.data(), basis[levels].dimN, Xbody.data(), 0, llen, &cell[gbegin]);
   double err;
-  solveRelErr(&err, X1, X2, lenX);
+  solveRelErr(&err, X1.data(), X2.data(), lenX);
 
   int mpi_rank, mpi_size;
   MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
@@ -193,15 +199,12 @@ int main(int argc, char* argv[]) {
   cellComm_free(cell_comm, levels);
   
   free(body);
-  free(Xbody);
   free(cell);
   free(rels_far);
   free(rels_near);
   free(cell_comm);
   free(basis);
   free(nodes);
-  free(X1);
-  free(X2);
   set_work_size(0, &Workspace, &Lwork);
 
   fin_libs();
