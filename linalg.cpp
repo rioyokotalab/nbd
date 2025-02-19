@@ -28,16 +28,16 @@ DenseZMat::~DenseZMat() {
     free(A);
 }
 
-void DenseZMat::op_Aij_mulB(char opA, int64_t mC, int64_t nC, int64_t k, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const {
+void DenseZMat::op_Aij_mulB(char opA, int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const {
   Eigen::Stride<Eigen::Dynamic, 1> lda(M, 1), ldb(strideB, 1), ldc(strideC, 1);
-  Eigen::Map<Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> matC(C_out, mC, nC, ldc);
-  Eigen::Map<const Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> matB(B_in, k, nC, ldb);
+  Eigen::Map<Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> matC(C_out, mA, nrhs, ldc);
+  Eigen::Map<const Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> matB(B_in, nA, nrhs, ldb);
   if (opA == 'T' || opA == 't')
-    matC.noalias() = Eigen::Map<const Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>>(&A[iA + jA * M], k, mC, lda).transpose() * matB;
+    matC.noalias() = Eigen::Map<const Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>>(&A[iA + jA * M], nA, mA, lda).transpose() * matB;
   else if (opA == 'C' || opA == 'c')
-    matC.noalias() = Eigen::Map<const Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>>(&A[iA + jA * M], k, mC, lda).adjoint() * matB;
+    matC.noalias() = Eigen::Map<const Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>>(&A[iA + jA * M], nA, mA, lda).adjoint() * matB;
   else
-    matC.noalias() = Eigen::Map<const Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>>(&A[iA + jA * M], mC, k, lda) * matB;
+    matC.noalias() = Eigen::Map<const Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>>(&A[iA + jA * M], mA, nA, lda) * matB;
 }
 
 LowRankMatrix::LowRankMatrix(int64_t m, int64_t n, const MatrixAcc& eval, int64_t iA, int64_t jA) : M(m), N(n), rank(n), U(m * rank) {
@@ -54,18 +54,46 @@ LowRankMatrix::LowRankMatrix(double epi, int64_t m, int64_t n, int64_t k, int64_
     V.resize(n * rank);
     S.resize(rank);
   }
-  else if (0. < epi && k == rank && S[0] * epi < S[rank - 1]) {
-    rank = n;
-    U.resize(m * n);
-    V.clear();
-    S.clear();
+}
 
-    Eigen::MatrixXcd id = Eigen::MatrixXcd::Identity(n, n);
-    eval.op_Aij_mulB('N', m, n, n, iA, jA, id.data(), n, U.data(), m);
+void LowRankMatrix::matVecMul(int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const {
+  Eigen::Stride<Eigen::Dynamic, 1> ldb(strideB, 1), ldc(strideC, 1);
+  Eigen::Map<const Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> B(B_in, mA, nrhs, ldb);
+  Eigen::Map<Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> C(C_out, nA, nrhs, ldc);
+
+  Eigen::Map<const Eigen::MatrixXcd> matU(U.data() + iA, mA, rank);
+  if (rank < N) {
+    Eigen::Map<const Eigen::MatrixXcd> matV(V.data() + jA, nA, rank);
+    Eigen::Map<const Eigen::VectorXd> vecS(S.data(), rank);
+    C.noalias() += matU * (vecS.asDiagonal() * (matV.adjoint() * B));
+  }
+  else
+    C.noalias() += matU * B;
+}
+
+Hmatrix::Hmatrix(const MatrixAcc& eval, int64_t lbegin, int64_t len, const Cell cells[], const CSR& Near) {
+  int64_t lend = lbegin + len;
+  int64_t llen = Near.RowIndex[lend] - Near.RowIndex[lbegin];
+  yOffsets.reserve(llen);
+  xOffsets.reserve(llen);
+  L.reserve(llen);
+  
+  for (int64_t y = lbegin; y < lend; y++) {
+    int64_t yi = cells[y].Body[0];
+    int64_t M = cells[y].Body[1] - yi;
+
+    for (int64_t yx = Near.RowIndex[y]; yx < Near.RowIndex[y + 1]; yx++) {
+      int64_t x = Near.ColIndex[yx];
+      int64_t xj = cells[x].Body[0];
+      yOffsets.emplace_back(yi);
+      xOffsets.emplace_back(xj);
+      L.emplace_back(M, cells[x].Body[1] - xj, eval, yi, xj);
+    }
   }
 }
 
-Hmatrix::Hmatrix(double epi, const MatrixAcc& eval, int64_t rank, int64_t p, int64_t niters, int64_t lbegin, int64_t len, const Cell cells[], const CSR& Far) : lbegin(lbegin), lend(lbegin + len) {
+Hmatrix::Hmatrix(double epi, const MatrixAcc& eval, int64_t rank, int64_t p, int64_t niters, int64_t lbegin, int64_t len, const Cell cells[], const CSR& Far) {
+  int64_t lend = lbegin + len;
   int64_t llen = Far.RowIndex[lend] - Far.RowIndex[lbegin];
   yOffsets.reserve(llen);
   xOffsets.reserve(llen);
@@ -85,6 +113,17 @@ Hmatrix::Hmatrix(double epi, const MatrixAcc& eval, int64_t rank, int64_t p, int
   }
 }
 
+void Hmatrix::matVecMul(int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const {
+  for (int64_t i = 0; i < (int64_t)L.size(); i++) {
+    int64_t ybegin = std::max(iA, yOffsets[i]);
+    int64_t yend = std::min(iA + mA, yOffsets[i] + L[i].M);
+    int64_t xbegin = std::max(jA, xOffsets[i]);
+    int64_t xend = std::min(jA + nA, xOffsets[i] + L[i].N);
+
+    L[i].matVecMul(yend - ybegin, xend - xbegin, nrhs, ybegin - yOffsets[i], xbegin - xOffsets[i], &B_in[xbegin - jA], strideB, &C_out[ybegin - iA], strideC);
+  }
+}
+
 void Zrsvd(double epi, int64_t m, int64_t n, int64_t* k, int64_t p, int64_t niters, const MatrixAcc& A, int64_t iA, int64_t jA, double* S, std::complex<double>* U, int64_t ldu, std::complex<double>* V, int64_t ldv) {
   int64_t rank = std::min(*k, std::min(m, n));
   p = std::min(rank + p, std::min(m, n));
@@ -93,17 +132,17 @@ void Zrsvd(double epi, int64_t m, int64_t n, int64_t* k, int64_t p, int64_t nite
   std::normal_distribution<double> norm_dist(0., 1.);
   std::generate(R.reshaped().begin(), R.reshaped().end(), [&]() { return std::complex<double>(norm_dist(gen), norm_dist(gen)); });
 
-  A.op_Aij_mulB('N', m, p, n, iA, jA, R.data(), n, Q.data(), m);
+  A.op_Aij_mulB('N', m, n, p, iA, jA, R.data(), n, Q.data(), m);
   while (0 < --niters) {
     Eigen::HouseholderQR<Eigen::MatrixXcd> qr(Q);
     Q = qr.householderQ() * Eigen::MatrixXcd::Identity(m, p);
-    A.op_Aij_mulB('C', n, p, m, iA, jA, Q.data(), m, R.data(), n);
-    A.op_Aij_mulB('N', m, p, n, iA, jA, R.data(), n, Q.data(), m);
+    A.op_Aij_mulB('C', n, m, p, iA, jA, Q.data(), m, R.data(), n);
+    A.op_Aij_mulB('N', m, n, p, iA, jA, R.data(), n, Q.data(), m);
   }
 
   Eigen::HouseholderQR<Eigen::MatrixXcd> qr(Q);
   Q = qr.householderQ() * Eigen::MatrixXcd::Identity(m, p);
-  A.op_Aij_mulB('C', n, p, m, iA, jA, Q.data(), m, R.data(), n);
+  A.op_Aij_mulB('C', n, m, p, iA, jA, Q.data(), m, R.data(), n);
 
   Eigen::JacobiSVD<Eigen::MatrixXcd> svd(R, Eigen::ComputeThinU | Eigen::ComputeThinV);
   if (0. < epi && epi < 1.)

@@ -29,7 +29,7 @@ class MatrixAcc {
 public:
   int64_t M, N;
   MatrixAcc(int64_t M, int64_t N) : M(M), N(N) {};
-  virtual void op_Aij_mulB(char opA, int64_t mC, int64_t nC, int64_t k, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const = 0;
+  virtual void op_Aij_mulB(char opA, int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const = 0;
 };
   
 class DenseZMat : public MatrixAcc {
@@ -37,7 +37,7 @@ public:
   std::complex<double>* A;
   DenseZMat(int64_t M, int64_t N);
   ~DenseZMat();
-  void op_Aij_mulB(char opA, int64_t mC, int64_t nC, int64_t k, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const override;
+  void op_Aij_mulB(char opA, int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const override;
 };
   
 class LowRankMatrix {
@@ -48,17 +48,18 @@ public:
 
   LowRankMatrix(int64_t m, int64_t n, const MatrixAcc& eval, int64_t iA, int64_t jA);
   LowRankMatrix(double epi, int64_t m, int64_t n, int64_t k, int64_t p, int64_t niters, const MatrixAcc& eval, int64_t iA, int64_t jA);
+  void matVecMul(int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const;
 };
 
 class Hmatrix {
 public:
-  int64_t lbegin = 0;
-  int64_t lend = 0;
   std::vector<int64_t> yOffsets;
   std::vector<int64_t> xOffsets;
   std::vector<LowRankMatrix> L;
   
+  Hmatrix(const MatrixAcc& eval, int64_t lbegin, int64_t len, const Cell cells[], const CSR& Near);
   Hmatrix(double epi, const MatrixAcc& eval, int64_t rank, int64_t p, int64_t niters, int64_t lbegin, int64_t len, const Cell cells[], const CSR& Far);
+  void matVecMul(int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const;
 };
 
 void Zrsvd(double epi, int64_t m, int64_t n, int64_t* k, int64_t p, int64_t niters, const MatrixAcc& A, int64_t iA, int64_t jA, double* S, std::complex<double>* U, int64_t ldu, std::complex<double>* V, int64_t ldv);

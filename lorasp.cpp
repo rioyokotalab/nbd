@@ -78,9 +78,22 @@ int main(int argc, char* argv[]) {
   relations(rels_near, &cellNear, levels, cell_comm);
   relations(rels_far, &cellFar, levels, cell_comm);
 
+  std::vector<Hmatrix> hA;
+  hA.reserve(levels + 1);
+
+  for (int64_t i = 0; i <= levels; i++) {
+    int64_t lbegin = 0, llen = 0;
+    content_length(&llen, NULL, &lbegin, &cell_comm[i]);
+    int64_t gbegin = cell_comm[i].iGlobal(lbegin);
+    hA.emplace_back(1.e-10, denseA, rank_max, rank_max * 2, 2, gbegin, llen, cell, cellFar);
+  }
+
   int64_t lbegin = 0, llen = 0;
   content_length(&llen, NULL, &lbegin, &cell_comm[levels]);
   int64_t gbegin = cell_comm[levels].iGlobal(lbegin);
+  int64_t body_local[2] = { cell[gbegin].Body[0], cell[gbegin + llen - 1].Body[1] };
+
+  Hmatrix blA(denseA, gbegin, llen, cell, cellNear);
 
   MPI_Barrier(MPI_COMM_WORLD);
   double construct_time = MPI_Wtime(), construct_comm_time;
@@ -100,18 +113,20 @@ int main(int argc, char* argv[]) {
 
   int64_t lenX = rels_near[levels].N * basis[levels].dimN;
   Eigen::VectorXd X1(lenX), X2(lenX);
-  Eigen::VectorXcd X3(lenX);
+  Eigen::VectorXcd X3 = Eigen::VectorXcd::Zero(lenX);
 
-  loadX(X2.data(), basis[levels].dimN, Xbody.data(), 0, llen, &cell[gbegin]);
   double matvec_time = MPI_Wtime(), matvec_comm_time;
-  matVecA(nodes, basis, rels_near, X2.data(), cell_comm, levels);
+  for (auto& h : hA)
+    h.matVecMul(body_local[1] - body_local[0], Nbody, 1, body_local[0], 0, vecX.data(), Nbody, X3.data(), lenX);
+  blA.matVecMul(body_local[1] - body_local[0], Nbody, 1, body_local[0], 0, vecX.data(), Nbody, X3.data(), lenX);
 
   matvec_time = MPI_Wtime() - matvec_time;
   matvec_comm_time = timer.get_comm_timing();
+  X2 = X3.real();
+  X3.setZero();
 
   double cerr = 0.;
-  int64_t body_local[2] = { cell[gbegin].Body[0], cell[gbegin + llen - 1].Body[1] };
-  denseA.op_Aij_mulB('N', body_local[1] - body_local[0], 1, Nbody, body_local[0], 0, vecX.data(), Nbody, X3.data(), lenX);
+  denseA.op_Aij_mulB('N', body_local[1] - body_local[0], Nbody, 1, body_local[0], 0, vecX.data(), Nbody, X3.data(), lenX);
   X1 = X3.real();
   solveRelErr(&cerr, X1.data(), X2.data(), lenX);
   
