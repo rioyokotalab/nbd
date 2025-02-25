@@ -44,9 +44,8 @@ class LowRankMatrix : public MatrixAcc {
 public:
   int64_t rank;
   std::vector<std::complex<double>> U, V;
-  std::vector<double> S;
 
-  LowRankMatrix(double epi, int64_t m, int64_t n, int64_t k, int64_t p, int64_t niters, const MatrixAcc& eval, int64_t iA, int64_t jA);
+  LowRankMatrix(int64_t m, int64_t n, int64_t k, int64_t niters, const MatrixAcc& eval, int64_t iA, int64_t jA);
   void op_Aij_mulB(char opA, int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const override;
 };
 
@@ -58,11 +57,11 @@ public:
   std::vector<LowRankMatrix> L;
   
   Hmatrix(const MatrixAcc& eval, int64_t lbegin, int64_t len, const Cell tgt[], const Cell src[], const CSR& Near);
-  Hmatrix(double epi, const MatrixAcc& eval, int64_t rank, int64_t p, int64_t niters, int64_t lbegin, int64_t len, const Cell tgt[], const Cell src[], const CSR& Far);
+  Hmatrix(const MatrixAcc& eval, int64_t rank, int64_t niters, int64_t lbegin, int64_t len, const Cell tgt[], const Cell src[], const CSR& Far);
   void matVecMul(int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const;
 };
 
-void Zrsvd(double epi, int64_t m, int64_t n, int64_t* k, int64_t p, int64_t niters, const MatrixAcc& A, int64_t iA, int64_t jA, double* S, std::complex<double>* U, int64_t ldu, std::complex<double>* V, int64_t ldv);
+void Zrrf(int64_t m, int64_t n, int64_t k, int64_t niters, const MatrixAcc& A, int64_t iA, int64_t jA, std::complex<double>* U, int64_t ldu, std::complex<double>* V, int64_t ldv);
 
 void gen_matrix(const EvalDouble& Eval, int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda);
 

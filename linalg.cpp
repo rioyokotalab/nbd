@@ -13,8 +13,6 @@
 #include <tuple>
 #include <random>
 #include <Eigen/Dense>
-#include <Eigen/SVD>
-#include <Eigen/QR>
 
 DenseZMat::DenseZMat(int64_t M, int64_t N) : MatrixAcc(M, N), A(nullptr) {
   if (0 < M && 0 < N) {
@@ -40,30 +38,29 @@ void DenseZMat::op_Aij_mulB(char opA, int64_t mA, int64_t nA, int64_t nrhs, int6
     matC.noalias() += Eigen::Map<const Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>>(&A[iA + jA * M], mA, nA, lda) * matB;
 }
 
-LowRankMatrix::LowRankMatrix(double epi, int64_t m, int64_t n, int64_t k, int64_t p, int64_t niters, const MatrixAcc& eval, int64_t iA, int64_t jA) : MatrixAcc(m, n), rank(std::min(k, std::min(m, n))), U(m * rank), V(n * rank), S(rank) {
-  Zrsvd(epi, m, n, &rank, p, niters, eval, iA, jA, S.data(), U.data(), m, V.data(), n);
+LowRankMatrix::LowRankMatrix(int64_t m, int64_t n, int64_t k, int64_t niters, const MatrixAcc& eval, int64_t iA, int64_t jA) : MatrixAcc(m, n), rank(std::min(k, std::min(m, n))), U(m * rank), V(n * rank) {
+  Zrrf(m, n, k, niters, eval, iA, jA, U.data(), m, V.data(), n);
 }
 
 void LowRankMatrix::op_Aij_mulB(char opA, int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const {
   Eigen::Stride<Eigen::Dynamic, 1> ldu(M, 1), ldv(N, 1), ldb(strideB, 1), ldc(strideC, 1);
   Eigen::Map<Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> C(C_out, mA, nrhs, ldc);
   Eigen::Map<const Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> B(B_in, nA, nrhs, ldb);
-  Eigen::Map<const Eigen::VectorXd> vecS(S.data(), rank);
 
   if (opA == 'T' || opA == 't') {
     Eigen::Map<const Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> matU(U.data() + iA, nA, rank, ldu);
     Eigen::Map<const Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> matV(V.data() + jA, mA, rank, ldv);
-    C.noalias() += matV.conjugate() * (vecS.asDiagonal() * (matU.transpose() * B));
+    C.noalias() += matV.conjugate() * (matU.transpose() * B);
   }
   else if (opA == 'C' || opA == 'c') {
     Eigen::Map<const Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> matU(U.data() + iA, nA, rank, ldu);
     Eigen::Map<const Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> matV(V.data() + jA, mA, rank, ldv);
-    C.noalias() += matV * (vecS.asDiagonal() * (matU.adjoint() * B));
+    C.noalias() += matV * (matU.adjoint() * B);
   }
   else {
     Eigen::Map<const Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> matU(U.data() + iA, mA, rank, ldu);
     Eigen::Map<const Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> matV(V.data() + jA, nA, rank, ldv);
-    C.noalias() += matU * (vecS.asDiagonal() * (matV.adjoint() * B));
+    C.noalias() += matU * (matV.adjoint() * B);
   }
 }
 
@@ -92,7 +89,7 @@ Hmatrix::Hmatrix(const MatrixAcc& eval, int64_t lbegin, int64_t len, const Cell 
   }
 }
 
-Hmatrix::Hmatrix(double epi, const MatrixAcc& eval, int64_t rank, int64_t p, int64_t niters, int64_t lbegin, int64_t len, const Cell tgt[], const Cell src[], const CSR& Far) {
+Hmatrix::Hmatrix(const MatrixAcc& eval, int64_t rank, int64_t niters, int64_t lbegin, int64_t len, const Cell tgt[], const Cell src[], const CSR& Far) {
   int64_t lend = lbegin + len;
   int64_t llen = Far.RowIndex[lend] - Far.RowIndex[lbegin];
   yOffsets.reserve(llen);
@@ -109,7 +106,7 @@ Hmatrix::Hmatrix(double epi, const MatrixAcc& eval, int64_t rank, int64_t p, int
       int64_t N = src[x].Body[1] - xj;
       yOffsets.emplace_back(yi);
       xOffsets.emplace_back(xj);
-      L.emplace_back(epi, M, N, rank, p, niters, eval, yi, xj);
+      L.emplace_back(M, N, rank, niters, eval, yi, xj);
     }
   }
 }
@@ -134,42 +131,30 @@ void Hmatrix::matVecMul(int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_
   }
 }
 
-void Zrsvd(double epi, int64_t m, int64_t n, int64_t* k, int64_t p, int64_t niters, const MatrixAcc& A, int64_t iA, int64_t jA, double* S, std::complex<double>* U, int64_t ldu, std::complex<double>* V, int64_t ldv) {
-  int64_t rank = std::min(*k, std::min(m, n));
-  p = std::min(rank + p, std::min(m, n));
-  Eigen::MatrixXcd R(n, p), Q = Eigen::MatrixXcd::Zero(m, p);
+void Zrrf(int64_t m, int64_t n, int64_t k, int64_t niters, const MatrixAcc& A, int64_t iA, int64_t jA, std::complex<double>* U, int64_t ldu, std::complex<double>* V, int64_t ldv) {
+  Eigen::Stride<Eigen::Dynamic, 1> ldU(ldu, 1), ldV(ldv, 1);
+  Eigen::MatrixXcd matA = Eigen::MatrixXcd::Zero(m, n);
+  Eigen::Map<Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> matU(U, m, k, ldU);
+  Eigen::Map<Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> matV(V, n, k, ldV);
+
+  Eigen::MatrixXcd id = Eigen::MatrixXcd::Identity(n, n);
+  A.op_Aij_mulB('N', m, n, n, iA, jA, id.data(), n, matA.data(), m);
+
   std::mt19937_64 gen;
   std::normal_distribution<double> norm_dist(0., 1.);
-  std::generate(R.reshaped().begin(), R.reshaped().end(), [&]() { return std::complex<double>(norm_dist(gen), norm_dist(gen)); });
+  Eigen::MatrixXcd rnd(n, k);
+  std::generate(rnd.reshaped().begin(), rnd.reshaped().end(), [&]() { return std::complex<double>(norm_dist(gen), norm_dist(gen)); });
 
-  A.op_Aij_mulB('N', m, n, p, iA, jA, R.data(), n, Q.data(), m);
+  matU.noalias() = matA * rnd;
+  matU = matU.householderQr().householderQ() * Eigen::MatrixXcd::Identity(m, k);
+
   while (0 < --niters) {
-    Eigen::HouseholderQR<Eigen::MatrixXcd> qr(Q);
-    Q = qr.householderQ() * Eigen::MatrixXcd::Identity(m, p);
-    R.setZero();
-    A.op_Aij_mulB('C', n, m, p, iA, jA, Q.data(), m, R.data(), n);
-
-    Q.setZero();
-    A.op_Aij_mulB('N', m, n, p, iA, jA, R.data(), n, Q.data(), m);
+    matV.noalias() = matA.adjoint() * matU;
+    matU.noalias() = matA * matV;
+    matU = matU.householderQr().householderQ() * Eigen::MatrixXcd::Identity(m, k);
   }
 
-  Eigen::HouseholderQR<Eigen::MatrixXcd> qr(Q);
-  Q = qr.householderQ() * Eigen::MatrixXcd::Identity(m, p);
-  R.setZero();
-  A.op_Aij_mulB('C', n, m, p, iA, jA, Q.data(), m, R.data(), n);
-
-  Eigen::JacobiSVD<Eigen::MatrixXcd> svd(R, Eigen::ComputeThinU | Eigen::ComputeThinV);
-  if (0. < epi && epi < 1.)
-  { svd.setThreshold(epi); *k = rank = std::min(rank, (int64_t)svd.rank()); }
-
-  Eigen::Stride<Eigen::Dynamic, 1> ldU(ldu, 1), ldV(ldv, 1);
-  Eigen::Map<Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> matU(U, m, rank, ldU);
-  Eigen::Map<Eigen::MatrixXcd, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic, 1>> matV(V, n, rank, ldV);
-  Eigen::Map<Eigen::VectorXd> vecS(S, rank);
-
-  vecS = svd.singularValues().topRows(rank);
-  matV = svd.matrixU().leftCols(rank);
-  matU.noalias() = Q * svd.matrixV().leftCols(rank);
+  matV.noalias() = matA.adjoint() * matU;
 }
 
 void mul_AS(const Matrix* RU, const Matrix* RV, Matrix* A) {

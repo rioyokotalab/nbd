@@ -95,7 +95,7 @@ int main(int argc, char* argv[]) {
     int64_t lbegin = 0, llen = 0;
     content_length(&llen, NULL, &lbegin, &cell_comm[i]);
     int64_t gbegin = cell_comm[i].iGlobal(lbegin);
-    hA.emplace_back(1.e-10, denseA, rank_max, rank_max * 2, 2, gbegin, llen, cell, cell, cellFar);
+    hA.emplace_back(denseA, rank_max, 2, gbegin, llen, cell, cell, cellFar);
   }
 
   int64_t lbegin = 0, llen = 0;
