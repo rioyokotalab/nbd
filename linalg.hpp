@@ -40,25 +40,25 @@ public:
   void op_Aij_mulB(char opA, int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const override;
 };
   
-class LowRankMatrix {
+class LowRankMatrix : public MatrixAcc {
 public:
-  int64_t M, N, rank;
+  int64_t rank;
   std::vector<std::complex<double>> U, V;
   std::vector<double> S;
 
-  LowRankMatrix(int64_t m, int64_t n, const MatrixAcc& eval, int64_t iA, int64_t jA);
   LowRankMatrix(double epi, int64_t m, int64_t n, int64_t k, int64_t p, int64_t niters, const MatrixAcc& eval, int64_t iA, int64_t jA);
-  void matVecMul(int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const;
+  void op_Aij_mulB(char opA, int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const override;
 };
 
 class Hmatrix {
 public:
   std::vector<int64_t> yOffsets;
   std::vector<int64_t> xOffsets;
+  std::vector<DenseZMat> D;
   std::vector<LowRankMatrix> L;
   
-  Hmatrix(const MatrixAcc& eval, int64_t lbegin, int64_t len, const Cell cells[], const CSR& Near);
-  Hmatrix(double epi, const MatrixAcc& eval, int64_t rank, int64_t p, int64_t niters, int64_t lbegin, int64_t len, const Cell cells[], const CSR& Far);
+  Hmatrix(const MatrixAcc& eval, int64_t lbegin, int64_t len, const Cell tgt[], const Cell src[], const CSR& Near);
+  Hmatrix(double epi, const MatrixAcc& eval, int64_t rank, int64_t p, int64_t niters, int64_t lbegin, int64_t len, const Cell tgt[], const Cell src[], const CSR& Far);
   void matVecMul(int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const;
 };
 

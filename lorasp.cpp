@@ -95,7 +95,7 @@ int main(int argc, char* argv[]) {
     int64_t lbegin = 0, llen = 0;
     content_length(&llen, NULL, &lbegin, &cell_comm[i]);
     int64_t gbegin = cell_comm[i].iGlobal(lbegin);
-    hA.emplace_back(1.e-10, denseA, rank_max, rank_max * 2, 2, gbegin, llen, cell, cellFar);
+    hA.emplace_back(1.e-10, denseA, rank_max, rank_max * 2, 2, gbegin, llen, cell, cell, cellFar);
   }
 
   int64_t lbegin = 0, llen = 0;
@@ -103,7 +103,7 @@ int main(int argc, char* argv[]) {
   int64_t gbegin = cell_comm[levels].iGlobal(lbegin);
   int64_t body_local[2] = { cell[gbegin].Body[0], cell[gbegin + llen - 1].Body[1] };
 
-  Hmatrix blA(denseA, gbegin, llen, cell, cellNear);
+  Hmatrix blA(denseA, gbegin, llen, cell, cell, cellNear);
 
   MPI_Barrier(MPI_COMM_WORLD);
   double construct_time = MPI_Wtime(), construct_comm_time;
