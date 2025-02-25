@@ -95,7 +95,7 @@ int main(int argc, char* argv[]) {
     int64_t lbegin = 0, llen = 0;
     content_length(&llen, NULL, &lbegin, &cell_comm[i]);
     int64_t gbegin = cell_comm[i].iGlobal(lbegin);
-    hA.emplace_back(denseA, rank_max, 2, gbegin, llen, cell, cell, cellFar);
+    hA.emplace_back(denseA, rank_max, 3, gbegin, llen, cell, cell, cellFar);
   }
 
   int64_t lbegin = 0, llen = 0;
@@ -136,7 +136,7 @@ int main(int argc, char* argv[]) {
   X3.setZero();
 
   double cerr = 0.;
-  denseA.op_Aij_mulB('N', body_local[1] - body_local[0], Nbody, 1, body_local[0], 0, vecX.data(), Nbody, X3.data(), lenX);
+  denseA.Aij_mulB(body_local[1] - body_local[0], Nbody, 1, body_local[0], 0, vecX.data(), Nbody, X3.data(), lenX);
   X1 = X3.real();
   solveRelErr(&cerr, X1.data(), X2.data(), lenX);
   

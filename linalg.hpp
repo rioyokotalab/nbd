@@ -29,7 +29,7 @@ class MatrixAcc {
 public:
   int64_t M, N;
   MatrixAcc(int64_t M, int64_t N) : M(M), N(N) {};
-  virtual void op_Aij_mulB(char opA, int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const = 0;
+  virtual void Aij_mulB(int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const = 0;
 };
   
 class DenseZMat : public MatrixAcc {
@@ -37,16 +37,16 @@ public:
   std::complex<double>* A;
   DenseZMat(int64_t M, int64_t N);
   ~DenseZMat();
-  void op_Aij_mulB(char opA, int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const override;
+  void Aij_mulB(int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const override;
 };
   
-class LowRankMatrix : public MatrixAcc {
+class LowRankMatrix {
 public:
-  int64_t rank;
+  int64_t M, N, rank;
   std::vector<std::complex<double>> U, V;
 
   LowRankMatrix(int64_t m, int64_t n, int64_t k, int64_t niters, const MatrixAcc& eval, int64_t iA, int64_t jA);
-  void op_Aij_mulB(char opA, int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const override;
+  void matVecMul(int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const;
 };
 
 class Hmatrix {
@@ -61,7 +61,7 @@ public:
   void matVecMul(int64_t mA, int64_t nA, int64_t nrhs, int64_t iA, int64_t jA, const std::complex<double>* B_in, int64_t strideB, std::complex<double>* C_out, int64_t strideC) const;
 };
 
-void Zrrf(int64_t m, int64_t n, int64_t k, int64_t niters, const MatrixAcc& A, int64_t iA, int64_t jA, std::complex<double>* U, int64_t ldu, std::complex<double>* V, int64_t ldv);
+void Zrrf(int64_t m, int64_t n, int64_t k, int64_t niters, const std::complex<double>* A, int64_t lda, std::complex<double>* U, int64_t ldu, std::complex<double>* V, int64_t ldv);
 
 void gen_matrix(const EvalDouble& Eval, int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda);
 
