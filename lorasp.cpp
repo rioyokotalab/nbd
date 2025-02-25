@@ -4,7 +4,6 @@
 #include <comm.hpp>
 #include <gpu_linalg.hpp>
 #include <linalg.hpp>
-#include <umv.hpp>
 #include <geometry.hpp>
 #include <profile.hpp>
 
@@ -12,6 +11,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+
+void solveRelErr(double* err_out, const double* X, const double* ref, int64_t lenX) {
+  double err[2] = { 0., 0. };
+  Eigen::Map<const Eigen::VectorXd> vecX(X, lenX);
+  Eigen::Map<const Eigen::VectorXd> vecR(ref, lenX);
+  err[0] = (vecX - vecR).dot(vecX - vecR);
+  err[1] = vecR.dot(vecR);
+
+  MPI_Allreduce(MPI_IN_PLACE, err, 2, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  *err_out = sqrt(err[0] / err[1]);
+}
 
 int main(int argc, char* argv[]) {
   cudaStream_t stream = (cudaStream_t)init_libs(&argc, &argv);

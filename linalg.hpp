@@ -66,8 +66,6 @@ void Zrsvd(double epi, int64_t m, int64_t n, int64_t* k, int64_t p, int64_t nite
 
 void gen_matrix(const EvalDouble& Eval, int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda);
 
-void mmult(char ta, char tb, const Matrix* A, const Matrix* B, Matrix* C, double alpha, double beta);
-
 void mul_AS(const Matrix* RU, const Matrix* RV, Matrix* A);
 
 void compute_basis(const EvalDouble& eval, int64_t rank_max, 

@@ -158,16 +158,6 @@ void Zrsvd(double epi, int64_t m, int64_t n, int64_t* k, int64_t p, int64_t nite
   matU.noalias() = Q * svd.matrixV().leftCols(rank);
 }
 
-void mmult(char ta, char tb, const Matrix* A, const Matrix* B, Matrix* C, double alpha, double beta) {
-  int64_t k = ta == 'N' ? A->N : A->M;
-  CBLAS_TRANSPOSE tac = ta == 'N' ? CblasNoTrans : CblasTrans;
-  CBLAS_TRANSPOSE tbc = tb == 'N' ? CblasNoTrans : CblasTrans;
-  int64_t lda = 1 < A->LDA ? A->LDA : 1;
-  int64_t ldb = 1 < B->LDA ? B->LDA : 1;
-  int64_t ldc = 1 < C->LDA ? C->LDA : 1;
-  cblas_dgemm(CblasColMajor, tac, tbc, C->M, C->N, k, alpha, A->A, lda, B->A, ldb, beta, C->A, ldc);
-}
-
 void mul_AS(const Matrix* RU, const Matrix* RV, Matrix* A) {
   if (A->M > 0 && A->N > 0) {
     std::vector<double> tmp(A->M * A->N);
