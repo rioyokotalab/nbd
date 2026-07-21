@@ -4,8 +4,6 @@
 #include <comm.hpp>
 #include <gpu_linalg.hpp>
 #include <linalg.hpp>
-#include <geometry.hpp>
-#include <profile.hpp>
 
 #include <Eigen/Dense>
 #include <stdio.h>
@@ -23,17 +21,42 @@ void solveRelErr(double* err_out, const double* X, const double* ref, int64_t le
   *err_out = sqrt(err[0] / err[1]);
 }
 
+void mesh_unit_sphere(double* bodies, int64_t nbodies) {
+  const double phi = M_PI * (3. - std::sqrt(5.));  // golden angle in radians
+  for (int64_t i = 0; i < nbodies; i++) {
+    const double y = 1. - ((double)i / ((double)nbodies - 1)) * 2.;  // y goes from 1 to -1
+
+    // Note: setting constant radius = 1 will produce a cylindrical shape
+    const double radius = std::sqrt(1. - y * y);  // radius at y
+    const double theta = (double)i * phi;
+
+    const double x = radius * std::cos(theta);
+    const double z = radius * std::sin(theta);
+    bodies[i * 3] = x;
+    bodies[i * 3 + 1] = y;
+    bodies[i * 3 + 2] = z;
+  }
+}
+
+void body_neutral_charge(double X[], int64_t nbodies, double cmax, unsigned int seed) {
+  if (seed > 0)
+    srand(seed);
+
+  double cmax2 = cmax * 2;
+  for (int64_t i = 0; i < nbodies; i++)
+    X[i] = ((double)rand() / RAND_MAX) * cmax2 - cmax;
+}
+
 int main(int argc, char* argv[]) {
   cudaStream_t stream = (cudaStream_t)init_libs(&argc, &argv);
 
   double prog_time = MPI_Wtime();
 
   int64_t Nbody = argc > 1 ? atol(argv[1]) : 8192;
-  double theta = argc > 2 ? atof(argv[2]) : 1e0;
+  double theta = argc > 2 ? atof(argv[2]) : 0e0;
   int64_t leaf_size = argc > 3 ? atol(argv[3]) : 256;
   int64_t rank_max = argc > 4 ? atol(argv[4]) : 100;
   int64_t sp_pts = argc > 5 ? atol(argv[5]) : Nbody;
-  const char* fname = argc > 6 ? argv[6] : NULL;
 
   leaf_size = Nbody < leaf_size ? Nbody : leaf_size;
   int64_t levels = (int64_t)log2((double)Nbody / leaf_size);
@@ -49,21 +72,8 @@ int main(int argc, char* argv[]) {
   Base* basis = (Base*)calloc(levels + 1, sizeof(Base));
   Node* nodes = (Node*)malloc(sizeof(Node) * (levels + 1));
 
-  if (fname == NULL) {
-    mesh_unit_sphere(body, Nbody);
-    //mesh_unit_cube(body, Nbody);
-    //uniform_unit_cube(body, Nbody, 1);
-    double c[3] = { 0, 0, 0 };
-    double r[3] = { 1, 1, 1 };
-    magnify_reloc(body, Nbody, c, c, r, sqrt(Nbody));
-    buildTree(&ncells, cell, body, Nbody, levels);
-  }
-  else {
-    int64_t* buckets = (int64_t*)malloc(sizeof(int64_t) * Nleaf);
-    read_sorted_bodies(&Nbody, Nleaf, body, buckets, fname);
-    buildTree(&ncells, cell, body, Nbody, levels);
-    free(buckets);
-  }
+  mesh_unit_sphere(body, Nbody);
+  buildTree(&ncells, cell, body, Nbody, levels);
 
   Eigen::VectorXd Xbody(Nbody);
   body_neutral_charge(Xbody.data(), Nbody, 1., 999);
@@ -154,20 +164,6 @@ int main(int argc, char* argv[]) {
   factor_time = MPI_Wtime() - factor_time;
   factor_comm_time = timer.get_comm_timing();
 
-  Profile profile;
-  for (int64_t i = 1; i <= levels; i++)
-    profile.record_factor(basis[i].dimR, basis[i].dimN, nodes[i].params.L_nnz, nodes[i].params.L_diag, nodes[i].params.L_rows);
-  profile.record_factor(basis[0].dimR, basis[0].dimN, 1, 1, 1);
-  
-  int64_t factor_flops[4], mem_A[3];
-  profile.get_profile(factor_flops, mem_A);
-  MPI_Allreduce(MPI_IN_PLACE, factor_flops, 4, MPI_INT64_T, MPI_SUM, MPI_COMM_WORLD);
-  
-  int64_t sum_flops = factor_flops[0] + factor_flops[1] + factor_flops[2];
-  double percent[3];
-  for (int i = 0; i < 3; i++)
-    percent[i] = (double)factor_flops[i] / (double)sum_flops * (double)100;
-
   cudaMemcpy(&nodes[levels].X_ptr[lbegin * basis[levels].dimN], X1.data(), lenX * sizeof(double), cudaMemcpyHostToDevice);
 
   MPI_Barrier(MPI_COMM_WORLD);
@@ -198,24 +194,16 @@ int main(int argc, char* argv[]) {
   prog_time = MPI_Wtime() - prog_time;
 
   if (mpi_rank == 0)
-    printf("LORASP: %d,%d,%lf,%d,%d\n"
+    printf("LORASP: %d,%d,%lf,%d\n"
       "Construct: %lf s. COMM: %lf s.\n"
       "Mat-Vec: %lf s. COMM: %lf s.\n"
       "Factorize: %lf s. COMM: %lf s.\n"
       "Solution: %lf s. COMM: %lf s.\n"
-      "Factorization GFLOPS: %lf GFLOPS/s.\n"
-      "GEMM: %lf%%, POTRF: %lf%%, TRSM: %lf%%\n"
-      "Pre-fac vs. Actual: %lf%%, %lf%% \n"
-      "Matrix Memory: %lf GiB.\n"
-      "Basis Memory: %lf GiB.\n"
-      "Vector Memory: %lf GiB.\n"
       "Err: Compress %e, Factor %e\n"
       "Program: %lf s.\n",
-      (int)Nbody, (int)(Nbody / Nleaf), theta, 3, (int)mpi_size,
+      (int)Nbody, (int)(Nbody / Nleaf), theta, (int)mpi_size,
       construct_time, construct_comm_time, matvec_time, matvec_comm_time, factor_time, factor_comm_time, 
-      solve_time, solve_comm_time, (double)sum_flops * 1.e-9 / factor_time, percent[0], percent[1], percent[2], 
-      (double)100 * factor_flops[3] / (sum_flops + factor_flops[3]), (double)100 * sum_flops / (sum_flops + factor_flops[3]),
-      (double)mem_A[0] * 1.e-9, (double)mem_A[1] * 1.e-9, (double)mem_A[2] * 1.e-9, cerr, err, prog_time);
+      solve_time, solve_comm_time, cerr, err, prog_time);
 
   for (int64_t i = 0; i <= levels; i++) {
     basis_free(&basis[i]);
