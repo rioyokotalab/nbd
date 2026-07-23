@@ -18,33 +18,7 @@ void memcpy2d(T* dst, const T* src, int64_t rows, int64_t cols, int64_t ld_dst, 
       std::copy(&src[i * ld_src], &src[i * ld_src + rows], &dst[i * ld_dst]);
 }
 
-int64_t generate_far(int64_t flen, int64_t far[], int64_t ngbs, const int64_t ngbs_body[], const int64_t ngbs_len[], int64_t nbody) {
-  int64_t near = 0;
-  for (int64_t i = 0; i < ngbs; i++)
-    near = near + ngbs_len[i];
-  int64_t avail = nbody - near;
-  flen = avail < flen ? avail : flen;
-  for (int64_t i = 0; i < flen; i++)
-    far[i] = (double)(i * avail) / flen;
-  int64_t* begin = far;
-  int64_t slen = 0;
-  for (int64_t i = 0; i < ngbs; i++) {
-    int64_t bound = ngbs_body[i] - slen;
-    int64_t* next = begin;
-    while (next != far + flen && *next < bound)
-      next = next + 1;
-    for (int64_t* p = begin; p != next; p++)
-      *p = *p + slen;
-    begin = next;
-    slen = slen + ngbs_len[i];
-  }
-  for (int64_t* p = begin; p != far + flen; p++)
-    *p = *p + near;
-  return flen;
-}
-
-void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* rel_near, int64_t levels,
-  const CellComm* comm, const double* bodies, int64_t nbodies, int64_t mrank, int64_t sp_pts, int64_t alignment) {
+void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* rel_near, int64_t levels, const CellComm* comm, const double* bodies, int64_t nbodies, int64_t mrank, int64_t sp_pts, int64_t alignment) {
 
   for (int64_t l = levels; l >= 0; l--) {
     int64_t xlen = 0, ibegin = 0, nodes = 0;
@@ -94,7 +68,7 @@ void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* re
       neighbor_bcast_cpu(&Skeletons[0], seg_skeletons, &comm[l]);
       dup_bcast_cpu(&Skeletons[0], seg_skeletons * xlen, &comm[l]);
     }
-    else 
+    else
       for (int64_t i = 0; i < xlen; i++) {
         int64_t len = cells[celli[i]].Body[1] - cells[celli[i]].Body[0];
         int64_t offset = 3 * cells[celli[i]].Body[0];
@@ -108,32 +82,15 @@ void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* re
       int64_t ske_len = basis[l].Dims[i + ibegin];
       double* mat = &matrix_data[seg_matrix * i];
       double* Xbodies = &Skeletons[(i + ibegin) * seg_skeletons];
-
       int64_t ci = celli[i + ibegin];
-      int64_t nbegin = rel_near->RowIndex[ci];
-      int64_t nlen = rel_near->RowIndex[ci + 1] - nbegin;
-      const int64_t* ngbs = &rel_near->ColIndex[nbegin];
-      std::vector<double> Cbodies;
-      std::vector<int64_t> remote(sp_pts), body(nlen), lens(nlen);
 
-      for (int64_t j = 0; j < nlen; j++) {
-        int64_t cj = ngbs[j];
-        body[j] = cells[cj].Body[0];
-        lens[j] = cells[cj].Body[1] - cells[cj].Body[0];
-        if (cj != ci) {
-          int64_t lj = comm[l].iLocal(cj);
-          int64_t len = 3 * basis[l].Dims[lj];
-          Cbodies.insert(Cbodies.end(), &Skeletons[lj * seg_skeletons], &Skeletons[lj * seg_skeletons + len]);
-        }
-      }
-      int64_t len_f = generate_far(sp_pts, &remote[0], nlen, &body[0], &lens[0], nbodies);
-
-      std::vector<double> Fbodies(len_f * 3);
-      for (int64_t j = 0; j < len_f; j++)
+      std::vector<double> Fbodies;
+      for (int64_t j = 0; j < nbodies; j++)
         for (int64_t k = 0; k < 3; k++)
-          Fbodies[j * 3 + k] = bodies[remote[j] * 3 + k];
+          if (j < cells[ci].Body[0] || cells[ci].Body[1] <= j)
+            Fbodies.emplace_back(bodies[j * 3 + k]);
       
-      compute_basis(eval, mrank, ske_len, mat, seg_dim, &Xbodies[0], Cbodies.size() / 3, &Cbodies[0], Fbodies.size() / 3, &Fbodies[0]);
+      compute_basis(eval, mrank, ske_len, mat, seg_dim, &Xbodies[0], Fbodies.size() / 3, &Fbodies[0]);
       basis[l].DimsLr[i + ibegin] = std::min(mrank, ske_len);
     }
     neighbor_bcast_sizes_cpu(basis[l].DimsLr.data(), &comm[l]);
@@ -151,7 +108,6 @@ void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* re
       max[1] = std::max(max[1], i2);
       max[2] = std::max(max[2], std::get<1>(comm[l].LocalChild[i]));
     }
-    MPI_Allreduce(MPI_IN_PLACE, max, 3, MPI_INT64_T, MPI_MAX, MPI_COMM_WORLD);
 
     basis[l].dimN = std::max(max[0] + max[1], basis[l + 1].dimS * max[2]);
     basis[l].dimS = max[0];
