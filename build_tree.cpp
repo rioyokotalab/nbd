@@ -4,11 +4,6 @@
 #include <comm.hpp>
 #include <basis.hpp>
 
-#include <cstdio>
-#include <cstdlib>
-#include <cmath>
-#include <cstring>
-
 #include <algorithm>
 #include <array>
 

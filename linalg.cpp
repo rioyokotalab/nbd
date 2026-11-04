@@ -6,9 +6,6 @@
 #include "lapacke.h"
 
 #include <algorithm>
-#include <numeric>
-#include <cstdio>
-#include <cstdlib>
 #include <array>
 
 void mul_AS(const Matrix* RU, const Matrix* RV, Matrix* A) {

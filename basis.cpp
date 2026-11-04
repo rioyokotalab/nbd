@@ -4,10 +4,7 @@
 #include <comm.hpp>
 #include <build_tree.hpp>
 
-#include <cstdio>
 #include <cstdlib>
-#include <cmath>
-#include <cstring>
 
 template <typename T>
 void memcpy2d(T* dst, const T* src, int64_t rows, int64_t cols, int64_t ld_dst, int64_t ld_src) {
@@ -18,7 +15,7 @@ void memcpy2d(T* dst, const T* src, int64_t rows, int64_t cols, int64_t ld_dst, 
       std::copy(&src[i * ld_src], &src[i * ld_src + rows], &dst[i * ld_dst]);
 }
 
-void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* rel_near, int64_t levels, const CellComm* comm, const double* bodies, int64_t nbodies, int64_t mrank, int64_t sp_pts, int64_t alignment) {
+void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, int64_t levels, const CellComm* comm, const double* bodies, int64_t nbodies, int64_t mrank) {
 
   for (int64_t l = levels; l >= 0; l--) {
     int64_t xlen = 0, ibegin = 0, nodes = 0;
@@ -99,11 +96,6 @@ void buildBasis(const EvalDouble& eval, Base basis[], Cell* cells, const CSR* re
     for (int64_t i = 0; i < xlen; i++) {
       int64_t i1 = basis[l].DimsLr[i];
       int64_t i2 = basis[l].Dims[i] - basis[l].DimsLr[i];
-      int64_t rem1 = i1 & (alignment - 1);
-      int64_t rem2 = i2 & (alignment - 1);
-
-      i1 = std::max(alignment, i1 - rem1 + (rem1 ? alignment : 0));
-      i2 = std::max(alignment, i2 - rem2 + (rem2 ? alignment : 0));
       max[0] = std::max(max[0], i1);
       max[1] = std::max(max[1], i2);
       max[2] = std::max(max[2], std::get<1>(comm[l].LocalChild[i]));

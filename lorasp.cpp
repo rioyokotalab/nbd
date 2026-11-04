@@ -18,7 +18,7 @@ void solveRelErr(double* err_out, const double* X, const double* ref, int64_t le
   err[1] = vecR.dot(vecR);
 
   MPI_Allreduce(MPI_IN_PLACE, err, 2, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-  *err_out = sqrt(err[0] / err[1]);
+  *err_out = std::sqrt(err[0] / err[1]);
 }
 
 void mesh_unit_sphere(double* bodies, int64_t nbodies) {
@@ -93,7 +93,7 @@ int main(int argc, char* argv[]) {
 
   MPI_Barrier(MPI_COMM_WORLD);
   double construct_time = MPI_Wtime();
-  buildBasis(eval, basis, cell, &cellNear, levels, cell_comm, body, Nbody, rank_max, Nbody, 4);
+  buildBasis(eval, basis, cell, levels, cell_comm, body, Nbody, rank_max);
 
   MPI_Barrier(MPI_COMM_WORLD);
   construct_time = MPI_Wtime() - construct_time;
@@ -110,8 +110,8 @@ int main(int argc, char* argv[]) {
   Eigen::VectorXd X1(lenX), X2(lenX);
   X2.setZero();
 
-  Eigen::MatrixXd dataA(Nbody, Nbody);
-  gen_matrix(eval, Nbody, Nbody, body, body, dataA.data(), Nbody);
+  Eigen::MatrixXd dataA(lenX, Nbody);
+  gen_matrix(eval, lenX, Nbody, &body[body_local[0] * 3], body, dataA.data(), lenX);
   X1 = dataA * Xbody;
   
   factorA_mov_mem(nodes, levels);

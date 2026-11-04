@@ -2,7 +2,6 @@
 
 #include <complex>
 #include <cstdint>
-#include <vector>
 
 class Cell;
 class CSR;
