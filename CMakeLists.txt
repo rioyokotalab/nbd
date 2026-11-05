@@ -8,11 +8,9 @@ project ("nbd" LANGUAGES CXX)
 find_package(BLAS REQUIRED)
 find_package(LAPACK REQUIRED)
 find_package(MPI REQUIRED)
-find_package(Eigen3 REQUIRED)
 find_package(CUDAToolkit REQUIRED)
 
 add_executable(main.app lorasp.cpp)
 
-target_compile_definitions(main.app PRIVATE EIGEN_USE_BLAS EIGEN_USE_LAPACKE)
 target_include_directories(main.app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(main.app BLAS::BLAS LAPACK::LAPACK -llapacke MPI::MPI_CXX Eigen3::Eigen CUDA::cudart CUDA::cublas CUDA::cusolver -lnccl)
+target_link_libraries(main.app BLAS::BLAS LAPACK::LAPACK -llapacke MPI::MPI_CXX CUDA::cudart CUDA::cublas CUDA::cusolver -lnccl)

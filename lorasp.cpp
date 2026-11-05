@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <cstdio>
+#include <cassert>
 
 #include "cblas.h"
 #include "lapacke.h"
@@ -16,7 +17,8 @@
 #include "cublas_v2.h"
 #include "cusolverDn.h"
 #include "nccl.h"
-#include <Eigen/Dense>
+
+extern "C" void dgemv_(const char*, const int*, const int*, const double*, const double*, const int*, const double*, const int*, const double*, double*, const int*) noexcept;
 
 class Matrix {
 public:
@@ -992,14 +994,6 @@ void dup_bcast_gpu(double* data, int64_t len, const CellComm* comm) {
   }
 }
 
-
-void gen_matrix(const EvalDouble& Eval, int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda);
-
-void mul_AS(const Matrix* RU, const Matrix* RV, Matrix* A);
-
-void compute_basis(const EvalDouble& eval, int64_t rank_max, 
-  int64_t M, double* A, int64_t LDA, double Xbodies[], int64_t N, const double bodies[]);
-
 cudaStream_t stream = NULL;
 cublasHandle_t cublasH = NULL;
 cusolverDnHandle_t cusolverH = NULL;
@@ -1387,7 +1381,6 @@ void chol_decomp(BatchedFactorParams* params, const CellComm* comm) {
   level_merge_gpu(params->A_data, N * N, comm);
   cublasDaxpy(cublasH, N, &one, params->ONE_DATA, 1, A, N + 1);
   cusolverDnDgetrf(cusolverH, N, N, A, N, params->ONE_DATA, params->ipiv, params->info);
-
 }
 
 void chol_solve(BatchedFactorParams* params, const CellComm* comm) {
@@ -1524,15 +1517,15 @@ void factorA_mov_mem(Node A[], int64_t levels) {
   }
 }
 
-void solveRelErr(double* err_out, const double* X, const double* ref, int64_t lenX) {
+double solveRelErr(const double* X, const double* ref, int64_t lenX) {
   double err[2] = { 0., 0. };
-  Eigen::Map<const Eigen::VectorXd> vecX(X, lenX);
-  Eigen::Map<const Eigen::VectorXd> vecR(ref, lenX);
-  err[0] = (vecX - vecR).dot(vecX - vecR);
-  err[1] = vecR.dot(vecR);
-
+  for (int64_t i = 0; i < lenX; ++i) {
+    std::complex<double> diff = X[i] - ref[i];
+    err[0] += std::norm(diff);
+    err[1] += std::norm(ref[i]);
+  }
   MPI_Allreduce(MPI_IN_PLACE, err, 2, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-  *err_out = std::sqrt(err[0] / err[1]);
+  return std::sqrt(err[0] / err[1]);
 }
 
 void mesh_unit_sphere(double* bodies, int64_t nbodies) {
@@ -1541,7 +1534,7 @@ void mesh_unit_sphere(double* bodies, int64_t nbodies) {
     const double y = 1. - ((double)i / ((double)nbodies - 1)) * 2.;  // y goes from 1 to -1
 
     // Note: setting constant radius = 1 will produce a cylindrical shape
-    const double radius = std::sqrt(1. - y * y);  // radius at y
+    const double radius = std::sqrt(std::max(0., 1. - y * y));  // radius at y
     const double theta = (double)i * phi;
 
     const double x = radius * std::cos(theta);
@@ -1560,6 +1553,61 @@ void body_neutral_charge(double X[], int64_t nbodies, double cmax, unsigned int 
   for (int64_t i = 0; i < nbodies; i++)
     X[i] = ((double)rand() / RAND_MAX) * cmax2 - cmax;
 }
+
+class DenseMatrix {
+public:
+  int64_t N;
+  std::vector<double> A;
+  std::vector<int64_t> rowOffsets;
+  int32_t mpi_rank; MPI_Comm world;
+  DenseMatrix(int64_t localM, int64_t N, MPI_Comm world) : N(N), world(world) {
+    if (0 < N) {
+      A.resize(localM * N, 0.); int mpi_size = 1;
+      MPI_Comm_rank(world, &mpi_rank); MPI_Comm_size(world, &mpi_size);
+      rowOffsets.resize(mpi_size + 1); rowOffsets[0] = 0;
+      MPI_Allgather(&localM, 1, MPI_INT64_T, &rowOffsets[1], 1, MPI_INT64_T, world);
+      std::inclusive_scan(rowOffsets.begin() + 1, rowOffsets.end(), rowOffsets.begin() + 1);
+    }
+  }
+
+  void matVecA(const DenseMatrix& X, double* B) const {
+    assert(X.rowOffsets.back() == N && X.N == int64_t(1));
+    std::vector<double> X_in(N);
+    std::vector<int> recvcounts(rowOffsets.size() - 1), displs(rowOffsets.size() - 1);
+    std::transform(X.rowOffsets.begin() + 1, X.rowOffsets.end(), X.rowOffsets.begin(), recvcounts.begin(), [](int64_t end, int64_t begin) { return (int)(end - begin); });
+    std::transform(X.rowOffsets.begin(), std::prev(X.rowOffsets.end()), displs.begin(), [](int64_t begin) { return (int)begin; });
+
+    MPI_Allgatherv(&(X.A)[0], int(X.rowOffsets[mpi_rank + 1] - X.rowOffsets[mpi_rank]), MPI_DOUBLE, &X_in[0], &recvcounts[0], &displs[0], MPI_DOUBLE, world);
+    int M = int(rowOffsets[mpi_rank + 1] - rowOffsets[mpi_rank]);
+    auto gemv = [](int m, int n, const double* a, const double* x, double* b) {
+      char transA = 'T'; int incx = 1; double one = 1., zero = 0.; dgemv_(&transA, &n, &m, &one, a, &n, x, &incx, &zero, b, &incx);
+    };
+    gemv(M, N, &A[0], &X_in[0], B);
+  }
+
+  void Aij_block(int64_t mA, int64_t nA, int64_t iA, int64_t jA, double* A_out, int64_t stride) const {
+    int64_t row_begin = std::max(rowOffsets[mpi_rank], iA), row_end = std::min(rowOffsets[mpi_rank + 1], iA + mA);
+    int64_t col_begin = std::max(int64_t(0), jA), col_end = std::min(N, jA + nA);
+    if (row_begin < row_end && col_begin < col_end) {
+      int64_t rows = row_end - row_begin, cols = col_end - col_begin;
+      const double* src = &A[(row_begin - rowOffsets[mpi_rank]) * N + col_begin];
+      double* dst = &A_out[(row_begin - iA) + (col_begin - jA) * stride];
+      for (int64_t x = 0; x < cols; ++x) for (int64_t y = 0; y < rows; ++y)
+      { dst[y + stride * x] = src[y * N + x]; }
+    }
+  }
+
+  void transposeA(DenseMatrix& B) const {
+    assert(B.rowOffsets.back() == N && rowOffsets.back() == B.N);
+    int64_t MA = rowOffsets[mpi_rank + 1] - rowOffsets[mpi_rank], MB = B.rowOffsets[mpi_rank + 1] - B.rowOffsets[mpi_rank];
+    for (int i = 0; i < int(rowOffsets.size()) - 1; ++i) {
+      int64_t NA = B.rowOffsets[i + 1] - B.rowOffsets[i], NB = rowOffsets[i + 1] - rowOffsets[i];
+      std::vector<double> AH(MA * NA), BH(MB * NB); Aij_block(MA, NA, rowOffsets[mpi_rank], B.rowOffsets[i], &AH[0], MA);
+      MPI_Sendrecv(&AH[0], AH.size(), MPI_DOUBLE, i, 0, &BH[0], BH.size(), MPI_DOUBLE, i, 0, world, MPI_STATUS_IGNORE);
+      memcpy2d(&(B.A)[rowOffsets[i]], &BH[0], NB, MB, B.N, NB);
+    }
+  }
+};
 
 int main(int argc, char* argv[]) {
   cudaStream_t stream = (cudaStream_t)init_libs(&argc, &argv);
@@ -1585,9 +1633,6 @@ int main(int argc, char* argv[]) {
 
   mesh_unit_sphere(body, Nbody);
   buildTree(&ncells, cell, body, Nbody, levels);
-
-  Eigen::VectorXd Xbody(Nbody);
-  body_neutral_charge(Xbody.data(), Nbody, 1., 999);
 
   traverse('N', &cellNear, ncells, cell, 0.);
   traverse('F', &cellFar, ncells, cell, 0.);
@@ -1621,12 +1666,17 @@ int main(int argc, char* argv[]) {
     evalS(eval, nodes[i].S, &basis[i], &rels_far[i], &cell_comm[i]);
 
   int64_t lenX = rels_near[levels].N * basis[levels].dimN;
-  Eigen::VectorXd X1(lenX), X2(lenX);
-  X2.setZero();
+  std::vector<double> X1(lenX), X2(lenX);
+  std::fill(X2.begin(), X2.end(), 0.);
 
-  Eigen::MatrixXd dataA(lenX, Nbody);
-  gen_matrix(eval, lenX, Nbody, &body[body_local[0] * 3], body, dataA.data(), lenX);
-  X1 = dataA * Xbody;
+  int mpi_rank, mpi_size;
+  MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
+
+  DenseMatrix dataA(lenX, Nbody, MPI_COMM_WORLD), Xbody(lenX, 1, MPI_COMM_WORLD); // DenseMatrix is row-major
+  gen_matrix(eval, Nbody, lenX, body, &body[body_local[0] * 3], dataA.A.data(), Nbody);
+  body_neutral_charge(Xbody.A.data(), lenX, 1., 999 ^ mpi_rank);
+  dataA.matVecA(Xbody, X1.data());
   
   factorA_mov_mem(nodes, levels);
   MPI_Barrier(MPI_COMM_WORLD);
@@ -1659,13 +1709,8 @@ int main(int argc, char* argv[]) {
 
   cudaMemcpy(X1.data(), &nodes[levels].X_ptr[lbegin * basis[levels].dimN], lenX * sizeof(double), cudaMemcpyDeviceToHost);
 
-  loadX(X2.data(), basis[levels].dimN, Xbody.data(), 0, llen, &cell[gbegin]);
-  double err;
-  solveRelErr(&err, X1.data(), X2.data(), lenX);
-
-  int mpi_rank, mpi_size;
-  MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
+  loadX(X2.data(), basis[levels].dimN, Xbody.A.data(), 0, llen, &cell[gbegin]);
+  double err = solveRelErr(X1.data(), X2.data(), lenX);
 
   prog_time = MPI_Wtime() - prog_time;
 
