@@ -11,10 +11,7 @@ find_package(MPI REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(CUDAToolkit REQUIRED)
 
-file(GLOB sources "*.cpp")
-file(GLOB headers "*.hpp")
-
-add_executable(main.app ${sources} ${headers})
+add_executable(main.app lorasp.cpp)
 
 target_compile_definitions(main.app PRIVATE EIGEN_USE_BLAS EIGEN_USE_LAPACKE)
 target_include_directories(main.app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
