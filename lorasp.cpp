@@ -206,7 +206,6 @@ void content_length(int64_t* local, int64_t* neighbors, int64_t* local_off, cons
 int64_t neighbor_bcast_sizes_cpu(int64_t* data, const CellComm* comm) {
   int64_t max = 0;
   if (comm->Comm_box.size() > 0 || comm->Comm_share != MPI_COMM_NULL) {
-    double start_time = MPI_Wtime();
     int64_t y = 0;
     for (int64_t p = 0; p < (int64_t)comm->Comm_box.size(); p++) {
       int64_t llen = std::get<1>(comm->ProcBoxes[p]);
@@ -227,7 +226,6 @@ int64_t neighbor_bcast_sizes_cpu(int64_t* data, const CellComm* comm) {
 
 void neighbor_bcast_cpu(double* data, int64_t seg, const CellComm* comm) {
   if (comm->Comm_box.size() > 0) {
-    double start_time = MPI_Wtime();
     int64_t y = 0;
     for (int64_t p = 0; p < (int64_t)comm->Comm_box.size(); p++) {
       int64_t llen = std::get<1>(comm->ProcBoxes[p]) * seg;
@@ -240,7 +238,6 @@ void neighbor_bcast_cpu(double* data, int64_t seg, const CellComm* comm) {
 
 void neighbor_reduce_cpu(double* data, int64_t seg, const CellComm* comm) {
   if (comm->Comm_box.size() > 0) {
-    double start_time = MPI_Wtime();
     int64_t y = 0;
     for (int64_t p = 0; p < (int64_t)comm->Comm_box.size(); p++) {
       int64_t llen = std::get<1>(comm->ProcBoxes[p]) * seg;
@@ -256,14 +253,12 @@ void neighbor_reduce_cpu(double* data, int64_t seg, const CellComm* comm) {
 
 void level_merge_cpu(double* data, int64_t len, const CellComm* comm) {
   if (comm->Comm_merge != MPI_COMM_NULL) {
-    double start_time = MPI_Wtime();
     MPI_Allreduce(MPI_IN_PLACE, data, len, MPI_DOUBLE, MPI_SUM, comm->Comm_merge);
   }
 }
 
 void dup_bcast_cpu(double* data, int64_t len, const CellComm* comm) {
   if (comm->Comm_share != MPI_COMM_NULL) {
-    double start_time = MPI_Wtime();
     MPI_Bcast(data, len, MPI_DOUBLE, 0, comm->Comm_share);
   }
 }
@@ -1585,7 +1580,7 @@ public:
     gemv(M, N, &A[0], &X_in[0], B);
   }
 
-  void Aij_block(int64_t mA, int64_t nA, int64_t iA, int64_t jA, double* A_out, int64_t stride) const {
+  void AijBlock(int64_t mA, int64_t nA, int64_t iA, int64_t jA, double* A_out, int64_t stride) const {
     int64_t row_begin = std::max(rowOffsets[mpi_rank], iA), row_end = std::min(rowOffsets[mpi_rank + 1], iA + mA);
     int64_t col_begin = std::max(int64_t(0), jA), col_end = std::min(N, jA + nA);
     if (row_begin < row_end && col_begin < col_end) {
@@ -1602,9 +1597,19 @@ public:
     int64_t MA = rowOffsets[mpi_rank + 1] - rowOffsets[mpi_rank], MB = B.rowOffsets[mpi_rank + 1] - B.rowOffsets[mpi_rank];
     for (int i = 0; i < int(rowOffsets.size()) - 1; ++i) {
       int64_t NA = B.rowOffsets[i + 1] - B.rowOffsets[i], NB = rowOffsets[i + 1] - rowOffsets[i];
-      std::vector<double> AH(MA * NA), BH(MB * NB); Aij_block(MA, NA, rowOffsets[mpi_rank], B.rowOffsets[i], &AH[0], MA);
+      std::vector<double> AH(MA * NA), BH(MB * NB); AijBlock(MA, NA, rowOffsets[mpi_rank], B.rowOffsets[i], &AH[0], MA);
       MPI_Sendrecv(&AH[0], AH.size(), MPI_DOUBLE, i, 0, &BH[0], BH.size(), MPI_DOUBLE, i, 0, world, MPI_STATUS_IGNORE);
       memcpy2d(&(B.A)[rowOffsets[i]], &BH[0], NB, MB, B.N, NB);
+    }
+  }
+
+  void AijSetZero(int64_t mA, int64_t nA, int64_t iA, int64_t jA) {
+    int64_t row_begin = std::max(rowOffsets[mpi_rank], iA), row_end = std::min(rowOffsets[mpi_rank + 1], iA + mA);
+    int64_t col_begin = std::max(int64_t(0), jA), col_end = std::min(N, jA + nA);
+    if (row_begin < row_end && col_begin < col_end) {
+      int64_t rows = row_end - row_begin, cols = col_end - col_begin;
+      double* src = &A[(row_begin - rowOffsets[mpi_rank]) * N + col_begin];
+      for (int64_t y = 0; y < rows; ++y) { std::fill_n(&src[y * N], cols, 0.); }
     }
   }
 };
