@@ -63,6 +63,7 @@ H2MatrixComm::H2MatrixComm(const std::pair<long long, long long> Tree[], std::pa
   long long p_next = std::distance(&Mapping[0], std::find(&Mapping[0], &Mapping[mpi_rank], Mapping[mpi_rank]));
   LocalChild = std::make_pair(Mapping[mpi_rank].first - Tree[pbegin].first, Tree[pend - 1].second - Mapping[mpi_rank].first);
   MPI_Comm_split(world, (lenp > 1 && mpi_rank == p_next) ? p : MPI_UNDEFINED, mpi_rank, &MergeComm);
+  MPI_Comm_split(world, mpi_rank == p ? 1 : MPI_UNDEFINED, mpi_rank, &RepComm);
   MPI_Comm_split(world, lenp > 1 ? p : MPI_UNDEFINED, mpi_rank, &DupComm);
 }
 
@@ -128,6 +129,15 @@ void H2MatrixComm::level_merge(long long* data, long long len) const {
 
 void H2MatrixComm::level_merge(std::complex<double>* data, long long len) const {
   level_merge(data, len, sizeof(std::complex<double>));
+}
+
+void H2MatrixComm::level_sum_len(long long* len) const {
+  record_mpi();
+  if (RepComm != MPI_COMM_NULL)
+    MPI_Allreduce(MPI_IN_PLACE, len, 1, MPI_LONG_LONG_INT, MPI_SUM, RepComm);
+  if (DupComm != MPI_COMM_NULL)
+    MPI_Bcast(len, 1, MPI_LONG_LONG_INT, 0, DupComm);
+  record_mpi();
 }
 
 void H2MatrixComm::neighbor_bcast(long long data[], const long long noffsets[]) const {

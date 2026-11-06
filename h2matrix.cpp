@@ -84,7 +84,7 @@ void H2Matrix::eval(const Cell cells[], const CSR& Far, const BasisBuilder& row_
   }
 }
 
-void H2Matrix::evalLeafA(const DenseMatrix& matA, const Cell cells[], const H2MatrixComm& comm) {
+void H2Matrix::evalLeafA(DenseMatrix& matA, const Cell cells[], const H2MatrixComm& comm) {
   long long ibegin = comm.oLocal();
   long long nodes = comm.lenLocal();
   long long ybegin = comm.oGlobal();
@@ -99,6 +99,7 @@ void H2Matrix::evalLeafA(const DenseMatrix& matA, const Cell cells[], const H2Ma
     long long N = DimsOffsets[i + ibegin + 1] - DimsOffsets[i + ibegin];
     long long ci = i + ybegin;
     matA.AijBlock(N, N, cells[ci].Body[0], cells[ci].Body[0], &A[AOffsets[i]], N);
+    matA.AijSetZero(N, N, cells[ci].Body[0], cells[ci].Body[0]);
   }
 }
 

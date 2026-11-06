@@ -29,7 +29,7 @@ H2MatrixSolver::H2MatrixSolver(const std::vector<Cell>& cells, const CSR& Far, l
   local_bodies = std::make_pair(cells[gbegin].Body[0], cells[gbegin + llen - 1].Body[1]);
 }
 
-void H2MatrixSolver::evalMatVecA(const DenseMatrix& matA, double epi, const Cell cells[], const CSR& Far) {
+void H2MatrixSolver::evalMatVecA(DenseMatrix& matA, double epi, const Cell cells[], const CSR& Far) {
   std::vector<BasisBuilder> row_side, col_side;
   row_side.reserve(levels + 1);
   col_side.reserve(levels + 1);
@@ -110,6 +110,8 @@ void H2MatrixSolver::free_all_comms() {
   for (H2MatrixComm& com : comm) {
     if (com.MergeComm != MPI_COMM_NULL)
       MPI_Comm_free(&com.MergeComm);
+    if (com.RepComm != MPI_COMM_NULL)
+      MPI_Comm_free(&com.RepComm);
     if (com.DupComm != MPI_COMM_NULL)
       MPI_Comm_free(&com.DupComm);
   }

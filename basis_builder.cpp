@@ -41,7 +41,7 @@ BasisBuilder::BasisBuilder(long long lbegin, long long len, const Cell cells[], 
     }
 }
 
-void BasisBuilder::evalLeafFMatrix(double epi, const DenseMatrix& matA, const Cell cells[]) {
+void BasisBuilder::evalLeafFMatrix(double epi, DenseMatrix& matA, const Cell cells[]) {
   for (long long y = lbegin; y < lend; ++y) {
     long long i = y - lbegin;
     long long mA = M[i];
@@ -58,7 +58,7 @@ void BasisBuilder::evalLeafFMatrix(double epi, const DenseMatrix& matA, const Ce
         j += nA;
       }
 
-      Ranks[i] = computeBasis(epi, Ranks[i], 'E', mA, N[i], 0, basis[i].data(), fmatrix[i].data());
+      Ranks[i] = computeBasis(epi, Ranks[i], mA, N[i], basis[i].data(), fmatrix[i].data());
       fmatrix[i].resize(Ranks[i] * N[i]); fmatrix[i].shrink_to_fit();
       basis_full[i].resize(mA * Ranks[i]);
       basis[i].resize(basis_full[i].size()); basis[i].shrink_to_fit();
@@ -96,7 +96,7 @@ void BasisBuilder::evalInnerFMatrix(double epi, const BasisBuilder& lower, const
 
       if (lbegin + 1 == lend)
         comm.level_merge(fmatrix[0].data(), fmatrix[0].size());
-      Ranks[i] = computeBasis(epi, Ranks[i], 'E', mi, N[i], 0, basis[i].data(), fmatrix[i].data());
+      Ranks[i] = computeBasis(epi, Ranks[i], mi, N[i], basis[i].data(), fmatrix[i].data());
 
       long long size_full = cells[y].Body[1] - cells[y].Body[0];
       fmatrix[i].resize(Ranks[i] * N[i]); fmatrix[i].shrink_to_fit();

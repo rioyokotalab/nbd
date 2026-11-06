@@ -23,7 +23,7 @@ public:
   std::pair<long long, long long> local_bodies;
 
   H2MatrixSolver(const std::vector<Cell>& cells, const CSR& Far, long long levels, MPI_Comm world);
-  void evalMatVecA(const DenseMatrix& matA, double epi, const Cell cells[], const CSR& Far);
+  void evalMatVecA(DenseMatrix& matA, double epi, const Cell cells[], const CSR& Far);
   void allocRHSwork(std::vector<long long>& iwork, std::vector<std::complex<double>>& cwork) const;
 
   void matVecMul(std::complex<double> X[]) const;

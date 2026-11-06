@@ -64,6 +64,12 @@ int main(int argc, char* argv[]) {
   DenseMatrix denseA(matA.local_bodies.second - matA.local_bodies.first, Nbody, world);
   gen_matrix(eval, Nbody, lenX, &body[0], &body[3 * matA.local_bodies.first], denseA.A.data());
 
+  DenseMatrix denseX(matA.local_bodies.second - matA.local_bodies.first, 1, world);
+  std::copy(&Xbody[matA.local_bodies.first], &Xbody[matA.local_bodies.second], denseX.A.data());
+  double refmatvec_time = MPI_Wtime();
+  denseA.matVecA(denseX, &X2[0]);
+  refmatvec_time = MPI_Wtime() - refmatvec_time;
+
   MPI_Barrier(world);
   double h2_construct_time = MPI_Wtime(), h2_construct_comm_time;
   matA.evalMatVecA(denseA, epi, cell.data(), Far);
@@ -71,12 +77,6 @@ int main(int argc, char* argv[]) {
   MPI_Barrier(world);
   h2_construct_time = MPI_Wtime() - h2_construct_time;
   h2_construct_comm_time = H2MatrixComm::get_comm_time(world);
-
-  DenseMatrix denseX(matA.local_bodies.second - matA.local_bodies.first, 1, world);
-  std::copy(&Xbody[matA.local_bodies.first], &Xbody[matA.local_bodies.second], denseX.A.data());
-  double refmatvec_time = MPI_Wtime();
-  denseA.matVecA(denseX, &X2[0]);
-  refmatvec_time = MPI_Wtime() - refmatvec_time;
 
   std::copy(&Xbody[matA.local_bodies.first], &Xbody[matA.local_bodies.second], &X1[0]);
   MPI_Barrier(world);

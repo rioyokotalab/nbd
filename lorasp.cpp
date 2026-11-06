@@ -1561,7 +1561,7 @@ public:
       MPI_Comm_rank(world, &mpi_rank); MPI_Comm_size(world, &mpi_size);
       rowOffsets.resize(mpi_size + 1); rowOffsets[0] = 0;
       MPI_Allgather(&localM, 1, MPI_INT64_T, &rowOffsets[1], 1, MPI_INT64_T, world);
-      std::inclusive_scan(rowOffsets.begin() + 1, rowOffsets.end(), rowOffsets.begin() + 1);
+      std::partial_sum(rowOffsets.begin() + 1, rowOffsets.end(), rowOffsets.begin() + 1);
     }
   }
 

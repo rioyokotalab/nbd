@@ -16,6 +16,7 @@ public:
   std::vector<long long> NeighborRanks;
   MPI_Comm MergeComm;
   MPI_Comm DupComm;
+  MPI_Comm RepComm;
   MPI_Comm worldComm;
 
   H2MatrixComm(const std::pair<long long, long long> Tree[], std::pair<long long, long long> Mapping[], const long long CRows[], const long long CCols[], MPI_Comm world = MPI_COMM_WORLD);
@@ -27,6 +28,7 @@ public:
   std::pair<long long, long long> oLocalChild(const H2MatrixComm& lower) const;
 
   void level_merge(void* data, long long len, size_t size) const;
+  void level_sum_len(long long* len) const;
   void neighbor_bcast(void* data, const long long noffsets[], size_t size) const;
 
   void level_merge(long long* data, long long len) const;

@@ -26,7 +26,7 @@ public:
   BasisBuilder(long long lbegin, long long len, const Cell cells[], const CSR& Far);
   BasisBuilder(long long lbegin, long long len, const Cell cells[], const CSR& Far, const BasisBuilder& upper);
 
-  void evalLeafFMatrix(double epi, const DenseMatrix& matA, const Cell cells[]);
+  void evalLeafFMatrix(double epi, DenseMatrix& matA, const Cell cells[]);
   void evalInnerFMatrix(double epi, const BasisBuilder& lower, const Cell cells[], const H2MatrixComm& comm);
 };
 
