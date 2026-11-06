@@ -54,7 +54,7 @@ void BasisBuilder::evalLeafFMatrix(double epi, const DenseMatrix& matA, const Ce
       for (std::pair<long long, long long> x : fcells[i]) {
         long long jA = x.first;
         long long nA = x.second - jA;
-        matA.Aij_block(mA, nA, iA, jA, &(fmatrix[i])[mA * j], mA);
+        matA.AijBlock(mA, nA, iA, jA, &(fmatrix[i])[mA * j], mA);
         j += nA;
       }
 

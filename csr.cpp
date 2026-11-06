@@ -6,23 +6,20 @@
 #include <numeric>
 #include <map>
 
-void getList(char NoF, std::vector<std::pair<long long, long long>>& rels, const Cell ci[], long long i, const Cell cj[], long long j) {
+void getList(std::vector<std::pair<long long, long long>>& rels, const Cell ci[], long long i, const Cell cj[], long long j) {
   std::array<double, 3> dc({ ci[i].C[0] - cj[j].C[0], ci[i].C[1] - cj[j].C[1], ci[i].C[2] - cj[j].C[2] });
   bool admis = 0. < std::inner_product(dc.begin(), dc.end(), dc.begin(), 0.);
-  bool write_far = NoF == 'F' || NoF == 'f';
-  bool write_near = NoF == 'N' || NoF == 'n';
-  if (admis ? write_far : write_near)
-    rels.emplace_back(i, j);
+  if (admis) { rels.emplace_back(i, j); }
   
   if (!admis && ci[i].Child[0] >= 0 && cj[j].Child[0] >= 0)
     for (long long k = ci[i].Child[0]; k < ci[i].Child[1]; k++)
       for (long long l = cj[j].Child[0]; l < cj[j].Child[1]; l++)
-        getList(NoF, rels, ci, k, cj, l);
+        getList(rels, ci, k, cj, l);
 }
 
-CSR::CSR(char NoF, const std::vector<Cell>& ci, const std::vector<Cell>& cj) : N(ci.size()), DiagCol(0) {
+CSR::CSR(const std::vector<Cell>& ci, const std::vector<Cell>& cj) : N(ci.size()), DiagCol(0) {
   std::vector<std::pair<long long, long long>> LIL;
-  getList(NoF, LIL, &ci[0], 0, &cj[0], 0);
+  getList(LIL, &ci[0], 0, &cj[0], 0);
   std::sort(LIL.begin(), LIL.end());
 
   long long len = LIL.size();

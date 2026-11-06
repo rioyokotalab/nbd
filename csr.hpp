@@ -14,6 +14,6 @@ public:
   std::vector<long long> DiagIndex;
 
   CSR() : DiagCol(0) {}
-  CSR(char NoF, const std::vector<Cell>& ci, const std::vector<Cell>& cj);
+  CSR(const std::vector<Cell>& ci, const std::vector<Cell>& cj);
   CSR(const CSR& global, long long lbegin, long long lend, const std::vector<std::array<long long, 3>>& boxes);
 };

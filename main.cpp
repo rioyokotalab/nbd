@@ -55,14 +55,14 @@ int main(int argc, char* argv[]) {
   ncells = Nleaf + 1;
   levels = 1;*/
 
-  CSR Near('N', cell, cell), Far('F', cell, cell);
-  H2MatrixSolver matA(cell, Near, Far, levels, world);
+  CSR Far(cell, cell);
+  H2MatrixSolver matA(cell, Far, levels, world);
   long long lenX = matA.local_bodies.second - matA.local_bodies.first;
   std::vector<std::complex<double>> X1(lenX, std::complex<double>(0., 0.));
   std::vector<std::complex<double>> X2(lenX, std::complex<double>(0., 0.));
 
-  DenseMatrix denseA(matA.local_bodies.first, matA.local_bodies.second, Nbody, world);
-  gen_matrix(eval, lenX, Nbody, &body[3 * matA.local_bodies.first], &body[0], denseA.A.data());
+  DenseMatrix denseA(matA.local_bodies.second - matA.local_bodies.first, Nbody, world);
+  gen_matrix(eval, Nbody, lenX, &body[0], &body[3 * matA.local_bodies.first], denseA.A.data());
 
   MPI_Barrier(world);
   double h2_construct_time = MPI_Wtime(), h2_construct_comm_time;
@@ -72,9 +72,10 @@ int main(int argc, char* argv[]) {
   h2_construct_time = MPI_Wtime() - h2_construct_time;
   h2_construct_comm_time = H2MatrixComm::get_comm_time(world);
 
-  std::copy(&Xbody[matA.local_bodies.first], &Xbody[matA.local_bodies.second], &X2[0]);
+  DenseMatrix denseX(matA.local_bodies.second - matA.local_bodies.first, 1, world);
+  std::copy(&Xbody[matA.local_bodies.first], &Xbody[matA.local_bodies.second], denseX.A.data());
   double refmatvec_time = MPI_Wtime();
-  denseA.matVecA(&X2[0]);
+  denseA.matVecA(denseX, &X2[0]);
   refmatvec_time = MPI_Wtime() - refmatvec_time;
 
   std::copy(&Xbody[matA.local_bodies.first], &Xbody[matA.local_bodies.second], &X1[0]);
@@ -90,7 +91,6 @@ int main(int argc, char* argv[]) {
   if (mpi_rank == 0) {
     int mpi_size = 1;
     MPI_Comm_size(world, &mpi_size);
-    std::cout << "------------------------------------------------------------" << std::endl;
     std::cout << "Active MPI processes: " << mpi_size << std::endl;
     std::cout << "Matrix Order: " << Nbody << " Leaf-size: " << leaf_size << std::endl;
     std::cout << "HSS-Matvec Target accuracy: " << epi << std::endl;

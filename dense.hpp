@@ -6,14 +6,15 @@
 
 class DenseMatrix {
 public:
-  long long RowStart, RowEnd, N;
+  long long N;
   std::vector<std::complex<double>> A;
   std::vector<long long> rowOffsets;
-  MPI_Comm world;
-  DenseMatrix(long long RowStart, long long RowEnd, long long N, MPI_Comm world);
+  int mpi_rank; MPI_Comm world;
+  DenseMatrix(long long localM, long long N, MPI_Comm world);
 
-  void Aij_block(long long mA, long long nA, long long iA, long long jA, std::complex<double>* A_out, long long stride) const;
-  void matVecA(std::complex<double>* X) const;
-  void adjointA(std::complex<double>* A) const;
+  void matVecA(const DenseMatrix& X, std::complex<double>* B) const;
+  void AijBlock(long long mA, long long nA, long long iA, long long jA, std::complex<double>* A_out, long long stride) const;
+  void adjointA(DenseMatrix& B) const;
+  void AijSetZero(long long mA, long long nA, long long iA, long long jA);
 };
 

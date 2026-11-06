@@ -10,33 +10,8 @@
 #include <algorithm>
 #include <numeric>
 
-void traverseLowerInd(long long ubegin, long long uend, long long lbegin, long long lend, const CSR& A, const CSR& C, const Cell cells[], std::array<long long, 4> ind[]) {
-  const long long* c_start = &C.ColIndex[C.RowIndex[lbegin]];
-  for (long long i = ubegin; i < uend; ++i) {
-    long long childi = cells[i].Child[0];
-    long long cendi = cells[i].Child[1];
-
-    for (long long ij = A.RowIndex[i]; ij < A.RowIndex[i + 1]; ++ij) {
-      long long j = A.ColIndex[ij];
-      long long childj = cells[j].Child[0];
-      long long cendj = cells[j].Child[1];
-      
-      for (long long y = std::max(lbegin, childi); y < std::min(lend, cendi); ++y) {
-        const long long* cy_start = &C.ColIndex[C.RowIndex[y]];
-        const long long* cy_end = &C.ColIndex[C.RowIndex[y + 1]];
-
-        for (long long x = childj; x < cendj; ++x) {
-          long long C_yx = std::distance(c_start, std::find(cy_start, cy_end, x));
-          if (C_yx < (C.RowIndex[y + 1] - C.RowIndex[lbegin]))
-            ind[C_yx] = std::array<long long, 4>({ y - childi, x - childj, ij - A.RowIndex[ubegin], i - ubegin });
-        }
-      }
-    }
-  }
-}
-
-H2MatrixSolver::H2MatrixSolver(const std::vector<Cell>& cells, const CSR& Near, const CSR& Far, long long levels, MPI_Comm world) : 
-  levels(levels), world(world), childOffsets(levels), lowerIndA(levels), lowerIndC(levels), A(levels + 1) {
+H2MatrixSolver::H2MatrixSolver(const std::vector<Cell>& cells, const CSR& Far, long long levels, MPI_Comm world) : 
+  levels(levels), world(world), A(levels + 1) {
   int mpi_size = 1;
   MPI_Comm_size(world, &mpi_size);
 
@@ -45,24 +20,8 @@ H2MatrixSolver::H2MatrixSolver(const std::vector<Cell>& cells, const CSR& Near, 
   std::transform(cells.begin(), cells.end(), tree.begin(), [](const Cell& c) { return std::make_pair(c.Child[0], c.Child[1]); });
   
   for (long long i = 0; i <= levels; ++i) {
-    comm.emplace_back(&tree[0], &mapping[0], Near.RowIndex.data(), Near.ColIndex.data(), Far.RowIndex.data(), Far.ColIndex.data(), world);
-
-    long long lower_begin = comm[i].oGlobal(), lower_end = lower_begin + comm[i].lenLocal();
-    Far_local.emplace_back(Far, lower_begin, lower_end, comm[i].Boxes);
-
-    if (0 < i) {
-      long long up = i - 1, upper_begin = comm[up].oGlobal(), upper_end = upper_begin + comm[up].lenLocal();
-
-      childOffsets[up].resize(upper_end - upper_begin + 1);
-      childOffsets[up][0] = comm[up].oLocalChild(comm[i]).first;
-      std::transform(&cells[upper_begin], &cells[upper_end], childOffsets[up].begin() + 1, [](const Cell& c) { return c.Child[1] - c.Child[0]; });
-      std::partial_sum(childOffsets[up].begin(), childOffsets[up].end(), childOffsets[up].begin());
-
-      lowerIndA[up].resize(Near.RowIndex[lower_end] - Near.RowIndex[lower_begin]);
-      lowerIndC[up].resize(Far.RowIndex[lower_end] - Far.RowIndex[lower_begin]);
-      traverseLowerInd(upper_begin, upper_end, lower_begin, lower_end, Near, Near, &cells[0], lowerIndA[up].data());
-      traverseLowerInd(upper_begin, upper_end, lower_begin, lower_end, Near, Far, &cells[0], lowerIndC[up].data());
-    }
+    comm.emplace_back(&tree[0], &mapping[0], Far.RowIndex.data(), Far.ColIndex.data(), world);
+    Far_local.emplace_back(Far, comm[i].oGlobal(), comm[i].oGlobal() + comm[i].lenLocal(), comm[i].Boxes);
   }
 
   long long llen = comm[levels].lenLocal();
@@ -82,8 +41,8 @@ void H2MatrixSolver::evalMatVecA(const DenseMatrix& matA, double epi, const Cell
     col_side.emplace_back(comm[l].oGlobal(), comm[l].lenLocal(), cells, Far, col_side[l - 1]);
   }
 
-  DenseMatrix AH(matA.RowStart, matA.RowEnd, matA.N, world);
-  matA.adjointA(AH.A.data());
+  DenseMatrix AH(matA.rowOffsets[matA.mpi_rank + 1] - matA.rowOffsets[matA.mpi_rank], matA.N, world);
+  matA.adjointA(AH);
 
   row_side[levels].evalLeafFMatrix(epi, matA, cells);
   std::copy(row_side[levels].Ranks.begin(), row_side[levels].Ranks.end(), col_side[levels].Ranks.begin());

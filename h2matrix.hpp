@@ -11,12 +11,11 @@ class H2MatrixComm;
 
 class H2Matrix {
 public:
-  std::vector<long long> Dims;
-  std::vector<long long> DimsLr;
   std::vector<long long> DimsOffsets;
   std::vector<long long> DimsLrOffsets;
 
   std::vector<long long> UOffsets;
+  std::vector<long long> VOffsets;
   std::vector<long long> AOffsets;
   std::vector<long long> COffsets;
 

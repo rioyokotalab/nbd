@@ -19,14 +19,10 @@ public:
   std::vector<CSR> Far_local;
   MPI_Comm world;
 
-  std::vector<std::vector<long long>> childOffsets;
-  std::vector<std::vector<std::array<long long, 4>>> lowerIndA;
-  std::vector<std::vector<std::array<long long, 4>>> lowerIndC;
   std::vector<H2Matrix> A;
-
   std::pair<long long, long long> local_bodies;
 
-  H2MatrixSolver(const std::vector<Cell>& cells, const CSR& Near, const CSR& Far, long long levels, MPI_Comm world);
+  H2MatrixSolver(const std::vector<Cell>& cells, const CSR& Far, long long levels, MPI_Comm world);
   void evalMatVecA(const DenseMatrix& matA, double epi, const Cell cells[], const CSR& Far);
   void allocRHSwork(std::vector<long long>& iwork, std::vector<std::complex<double>>& cwork) const;
 

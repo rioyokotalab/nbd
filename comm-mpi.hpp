@@ -18,7 +18,7 @@ public:
   MPI_Comm DupComm;
   MPI_Comm worldComm;
 
-  H2MatrixComm(const std::pair<long long, long long> Tree[], std::pair<long long, long long> Mapping[], const long long ARows[], const long long ACols[], const long long CRows[], const long long CCols[], MPI_Comm world = MPI_COMM_WORLD);
+  H2MatrixComm(const std::pair<long long, long long> Tree[], std::pair<long long, long long> Mapping[], const long long CRows[], const long long CCols[], MPI_Comm world = MPI_COMM_WORLD);
   
   long long oLocal() const;
   long long oGlobal() const;

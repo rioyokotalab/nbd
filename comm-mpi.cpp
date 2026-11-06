@@ -29,7 +29,7 @@ void getNextLevelMapping(std::pair<long long, long long> Mapping[], const std::p
   std::copy(MappingNext.begin(), MappingNext.end(), Mapping);
 }
 
-H2MatrixComm::H2MatrixComm(const std::pair<long long, long long> Tree[], std::pair<long long, long long> Mapping[], const long long ARows[], const long long ACols[], const long long CRows[], const long long CCols[], MPI_Comm world) : worldComm(world) {
+H2MatrixComm::H2MatrixComm(const std::pair<long long, long long> Tree[], std::pair<long long, long long> Mapping[], const long long CRows[], const long long CCols[], MPI_Comm world) : worldComm(world) {
   int mpi_rank = 0, mpi_size = 1;
   MPI_Comm_rank(world, &mpi_rank);
   MPI_Comm_size(world, &mpi_size);
@@ -41,10 +41,10 @@ H2MatrixComm::H2MatrixComm(const std::pair<long long, long long> Tree[], std::pa
     std::find_if_not(&Mapping[p], &Mapping[mpi_size], [&](std::pair<long long, long long> i) { return i == Mapping[mpi_rank]; }));
 
   std::map<long long, long long> col_to_mpi_rank;
-  std::set<long long> cols;
   std::for_each(Mapping, &Mapping[mpi_size], [&](std::pair<long long, long long>& i) {
     for (long long col = i.first; col < i.second; ++col) col_to_mpi_rank.emplace(col, (long long)std::distance(Mapping, &i)); });
-  std::for_each(&ACols[ARows[pbegin]], &ACols[ARows[pend]], [&](long long col) { cols.insert(col_to_mpi_rank[col]); });
+
+  std::set<long long> cols; cols.insert(col_to_mpi_rank[pbegin]);
   std::for_each(&CCols[CRows[pbegin]], &CCols[CRows[pend]], [&](long long col) { cols.insert(col_to_mpi_rank[col]); });
 
   NeighborRanks.resize(cols.size());
@@ -55,11 +55,7 @@ H2MatrixComm::H2MatrixComm(const std::pair<long long, long long> Tree[], std::pa
 
   long long lenBoxes = 0;
   for (long long i = 0; i < (long long)NeighborRanks.size(); i++) {
-    long long ibegin = Mapping[NeighborRanks[i]].first;
-    long long iend = Mapping[NeighborRanks[i]].second;
-    std::set<long long> icols;
-    std::for_each(&ACols[ARows[ibegin]], &ACols[ARows[iend]], [&](long long col) { icols.insert(col_to_mpi_rank[col]); });
-    std::for_each(&CCols[CRows[ibegin]], &CCols[CRows[iend]], [&](long long col) { icols.insert(col_to_mpi_rank[col]); });
+    long long ibegin = Mapping[NeighborRanks[i]].first, iend = Mapping[NeighborRanks[i]].second;
     Boxes.emplace_back(std::array<long long, 3>({ ibegin, iend - ibegin, lenBoxes += iend - ibegin }));
   }
 
