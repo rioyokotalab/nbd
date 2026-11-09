@@ -9,12 +9,13 @@ public:
   long long N;
   std::vector<std::complex<double>> A;
   std::vector<long long> rowOffsets;
-  int mpi_rank; MPI_Comm world;
-  DenseMatrix(long long localM, long long N, MPI_Comm world);
+  int prime_rank; MPI_Comm prime, sub;
+  DenseMatrix(long long localM, long long N, MPI_Comm prime, MPI_Comm sub);
 
   void matVecA(const DenseMatrix& X, std::complex<double>* B) const;
-  void AijBlock(long long mA, long long nA, long long iA, long long jA, std::complex<double>* A_out, long long stride) const;
   void adjointA(DenseMatrix& B) const;
+  void AijBlock(long long mA, long long nA, long long iA, long long jA, std::complex<double>* A_out, long long stride) const;
   void AijSetZero(long long mA, long long nA, long long iA, long long jA);
+  void compress(double epi, std::vector<long long>& recipe, std::vector<std::complex<double>>& basis);
 };
 

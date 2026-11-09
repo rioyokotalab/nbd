@@ -61,10 +61,10 @@ int main(int argc, char* argv[]) {
   std::vector<std::complex<double>> X1(lenX, std::complex<double>(0., 0.));
   std::vector<std::complex<double>> X2(lenX, std::complex<double>(0., 0.));
 
-  DenseMatrix denseA(matA.local_bodies.second - matA.local_bodies.first, Nbody, world);
+  DenseMatrix denseA(matA.local_bodies.second - matA.local_bodies.first, Nbody, world, MPI_COMM_NULL);
   gen_matrix(eval, Nbody, lenX, &body[0], &body[3 * matA.local_bodies.first], denseA.A.data());
 
-  DenseMatrix denseX(matA.local_bodies.second - matA.local_bodies.first, 1, world);
+  DenseMatrix denseX(matA.local_bodies.second - matA.local_bodies.first, 1, world, MPI_COMM_NULL);
   std::copy(&Xbody[matA.local_bodies.first], &Xbody[matA.local_bodies.second], denseX.A.data());
   double refmatvec_time = MPI_Wtime();
   denseA.matVecA(denseX, &X2[0]);

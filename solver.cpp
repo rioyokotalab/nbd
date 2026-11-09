@@ -41,7 +41,7 @@ void H2MatrixSolver::evalMatVecA(DenseMatrix& matA, double epi, Cell cells[], co
     col_side.emplace_back(comm[l].oGlobal(), comm[l].lenLocal(), cells, Far, col_side[l - 1]);
   }
 
-  DenseMatrix AH(matA.rowOffsets[matA.mpi_rank + 1] - matA.rowOffsets[matA.mpi_rank], matA.N, world);
+  DenseMatrix AH(matA.rowOffsets[matA.prime_rank + 1] - matA.rowOffsets[matA.prime_rank], matA.N, matA.prime, matA.sub);
   matA.adjointA(AH);
 
   row_side[levels].evalLeafFMatrix(epi, matA, cells);
