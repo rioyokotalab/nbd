@@ -98,7 +98,6 @@ int main(int argc, char* argv[]) {
     std::cout << "HSS-Matrix Construct Time: (tot) " << h2_construct_time << " (comm) " << h2_construct_comm_time << std::endl;
     std::cout << "HSS-Matvec Time: (tot) " << matvec_time << " (comm) " << matvec_comm_time << std::endl;
     std::cout << "Dense Matvec Time: (tot) " << refmatvec_time << std::endl;
-    //system("free");
   }
 
   matA.free_all_comms();

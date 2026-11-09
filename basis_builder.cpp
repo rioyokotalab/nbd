@@ -18,17 +18,17 @@ inline void nngemm(int M, int N, int K, const std::complex<double>* A, int lda, 
 BasisBuilder::BasisBuilder(long long lbegin, long long len, const Cell cells[], const CSR& Far) : lbegin(lbegin), lend(lbegin + len), Ncur(len, 0ll), N(len, 0ll), M(len), Ranks(len, 0ll), fcells(len), fmatrix(len), basis(len), basis_full(len) {
   for (long long y = lbegin; y < lend; ++y) {
     long long i = y - lbegin;
-    M[i] = cells[y].Body[1] - cells[y].Body[0];
+    M[i] = cells[y].N[1] - cells[y].N[0];
     
     for (long long yx = Far.RowIndex[y]; yx < Far.RowIndex[y + 1]; yx++) {
       long long x = Far.ColIndex[yx];
-      long long n = cells[x].Body[1] - cells[x].Body[0];
+      long long n = cells[x].N[1] - cells[x].N[0];
       Ncur[i] += n;
       N[i] += n;
-      if (0 < fcells[i].size() && fcells[i].back().second == cells[x].Body[0])
-        fcells[i].back().second = cells[x].Body[1];
+      if (0 < fcells[i].size() && fcells[i].back().second == cells[x].N[0])
+        fcells[i].back().second = cells[x].N[1];
       else
-        fcells[i].emplace_back(cells[x].Body[0], cells[x].Body[1]);
+        fcells[i].emplace_back(cells[x].N[0], cells[x].N[1]);
     }
   }
 }
@@ -46,7 +46,7 @@ void BasisBuilder::evalLeafFMatrix(double epi, DenseMatrix& matA, const Cell cel
     long long i = y - lbegin;
     long long mA = M[i];
     if (0 < mA && 0 < N[i]) {
-      long long iA = cells[y].Body[0];
+      long long iA = cells[y].N[0];
       fmatrix[i].resize(mA * N[i]);
       basis[i].resize(mA * mA);
 
@@ -98,7 +98,7 @@ void BasisBuilder::evalInnerFMatrix(double epi, const BasisBuilder& lower, const
         comm.level_merge(fmatrix[0].data(), fmatrix[0].size());
       Ranks[i] = computeBasis(epi, Ranks[i], mi, N[i], basis[i].data(), fmatrix[i].data());
 
-      long long size_full = cells[y].Body[1] - cells[y].Body[0];
+      long long size_full = cells[y].N[1] - cells[y].N[0];
       fmatrix[i].resize(Ranks[i] * N[i]); fmatrix[i].shrink_to_fit();
       basis[i].resize(mi * Ranks[i]); basis[i].shrink_to_fit();
       basis_full[i].resize(size_full * Ranks[i]);
@@ -106,12 +106,12 @@ void BasisBuilder::evalInnerFMatrix(double epi, const BasisBuilder& lower, const
       
       for (long long c = c_start; c < c_end; ++c) {
         long long ci = c - lower.lbegin;
-        long long m = cells[c].Body[1] - cells[c].Body[0];
+        long long m = cells[c].N[1] - cells[c].N[0];
         long long n = Ranks[i];
         long long k = lower.Ranks[ci];
         const std::complex<double>* matA = lower.basis_full[ci].data();
         const std::complex<double>* matB = basis[i].data() + ranksOffsets[c - cells[y].Child[0]];
-        std::complex<double>* matC = basis_full[i].data() + (cells[c].Body[0] - cells[y].Body[0]);
+        std::complex<double>* matC = basis_full[i].data() + (cells[c].N[0] - cells[y].N[0]);
         nngemm(m, n, k, matA, m, matB, mi, matC, size_full);
       }
       
