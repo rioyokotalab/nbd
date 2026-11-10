@@ -4,7 +4,6 @@
 #include <vector>
 
 class DenseMatrix;
-class BasisBuilder;
 class CSR;
 class Cell;
 class H2MatrixComm;
@@ -26,8 +25,7 @@ public:
   std::vector<std::complex<double>> A;
   std::vector<std::complex<double>> C;
   
-  void eval(Cell cells[], const BasisBuilder& row_side, const BasisBuilder& col_side, const CSR& Far_local, const CSR& Far, const H2MatrixComm& comm);
-  void evalLeafA(double epi, DenseMatrix& matA, Cell cells[], const CSR& Far_local, const H2MatrixComm& comm);
+  void evalLeafA(double epi, DenseMatrix& matA, const long long localM[], const long long localN[], const CSR& Far_local, const H2MatrixComm& comm, long long localNoffset = -1ll);
 
   void matVecUpwardPass(const std::complex<double>* X_in, std::complex<double>* Z, const H2MatrixComm& comm) const;
   void matVecHorizontalandDownwardPass(std::complex<double>* Y_out, const std::complex<double>* Z, std::complex<double>* Y, const CSR& Far) const;

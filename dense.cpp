@@ -34,20 +34,21 @@ static inline void MPI_Bcast_large(std::complex<double>* data, long long len, in
   } else { MPI_Bcast(data, int(len), MPI_C_DOUBLE_COMPLEX, root, comm); }
 }
 
-void DenseMatrix::matVecA(const DenseMatrix& X, std::complex<double>* B) const {
-  assert(X.rowOffsets.back() == N && X.N == 1ll);
+void DenseMatrix::matVecA(const DenseMatrix& matA, std::complex<double>* B) const {
+  assert(rowOffsets.back() == matA.N && N == 1ll);
+  assert(prime == matA.prime && sub == matA.sub);
   if (prime != MPI_COMM_NULL) {
-    std::vector<std::complex<double>> X_in(N);
+    std::vector<std::complex<double>> X_all(matA.N);
     std::vector<int> recvcounts(rowOffsets.size() - 1), displs(rowOffsets.size() - 1);
-    std::transform(X.rowOffsets.begin() + 1, X.rowOffsets.end(), X.rowOffsets.begin(), recvcounts.begin(), [](long long end, long long begin) { return (int)(end - begin); });
-    std::transform(X.rowOffsets.begin(), std::prev(X.rowOffsets.end()), displs.begin(), [](long long begin) { return (int)begin; });
+    std::transform(rowOffsets.begin() + 1, rowOffsets.end(), rowOffsets.begin(), recvcounts.begin(), [](long long end, long long begin) { return (int)(end - begin); });
+    std::transform(rowOffsets.begin(), std::prev(rowOffsets.end()), displs.begin(), [](long long begin) { return (int)begin; });
 
-    MPI_Allgatherv(&(X.A)[0], int(X.rowOffsets[prime_rank + 1] - X.rowOffsets[prime_rank]), MPI_C_DOUBLE_COMPLEX, &X_in[0], &recvcounts[0], &displs[0], MPI_C_DOUBLE_COMPLEX, prime);
-    int M = int(rowOffsets[prime_rank + 1] - rowOffsets[prime_rank]);
+    MPI_Allgatherv(&A[0], int(rowOffsets[prime_rank + 1] - rowOffsets[prime_rank]), MPI_C_DOUBLE_COMPLEX, &X_all[0], &recvcounts[0], &displs[0], MPI_C_DOUBLE_COMPLEX, prime);
+    int M = int(matA.rowOffsets[prime_rank + 1] - matA.rowOffsets[prime_rank]);
     auto gemv = [](int m, int n, const std::complex<double>* a, const std::complex<double>* x, std::complex<double>* b) {
       char transA = 'C'; int incx = 1; std::complex<double> one(1., 0.), zero(0., 0.); zgemv_(&transA, &n, &m, &one, a, &n, x, &incx, &zero, b, &incx);
     };
-    gemv(M, N, &A[0], &X_in[0], B);
+    gemv(M, matA.N, &(matA.A)[0], &X_all[0], B);
   }
   if (sub != MPI_COMM_NULL)
   { MPI_Bcast_large(B, rowOffsets[prime_rank + 1] - rowOffsets[prime_rank], 0, sub); }
@@ -55,6 +56,7 @@ void DenseMatrix::matVecA(const DenseMatrix& X, std::complex<double>* B) const {
 
 void DenseMatrix::adjointA(DenseMatrix& B) const {
   assert(B.rowOffsets.back() == N && rowOffsets.back() == B.N);
+  assert(prime == B.prime && sub == B.sub);
   if (prime != MPI_COMM_NULL) {
     long long MA = rowOffsets[prime_rank + 1] - rowOffsets[prime_rank], MB = B.rowOffsets[B.prime_rank + 1] - B.rowOffsets[B.prime_rank];
     MPI_Datatype typeA, typeB;
@@ -84,16 +86,14 @@ static inline int svd_fit_transform_right(double epi, int M, int N, std::complex
 
   std::vector<double> Snrm(S.size());
   std::transform_inclusive_scan(S.rbegin(), S.rend(), Snrm.rbegin(), std::plus<double>(), [](double x) { return x * x; });
-  if (Snrm[0] < std::numeric_limits<double>::min()) { return 0; } else {
-    double s0 = Snrm[0] * std::pow(epi, 2);
-    int rank = int(std::distance(Snrm.begin(), std::find_if(Snrm.begin(), Snrm.end(), [=](double s) { return s < s0; })));
-    for (int i = 0; i < rank; ++i) {
-      double s = S[i]; std::for_each(&A[int64_t(i) * int64_t(M)], &A[int64_t(i + 1) * int64_t(M)], [=](std::complex<double>& x) { x *= s; });
-      for (int j = 0; j < N; ++j)
-      { V[((long long)j) + ((long long)N) * ((long long)i)] = std::conj(VH[((long long)j) * ((long long)ldv) + ((long long)i)]); }
-    }
-    return rank;
+  double s0 = Snrm[0] * std::pow(epi, 2);
+  int rank = int(std::distance(Snrm.begin(), std::find_if(Snrm.begin(), Snrm.end(), [=](double s) { return s < s0; })));
+  for (int i = 0; i < rank; ++i) {
+    double s = S[i]; std::for_each(&A[int64_t(i) * int64_t(M)], &A[int64_t(i + 1) * int64_t(M)], [=](std::complex<double>& x) { x *= s; });
+    for (int j = 0; j < N; ++j)
+    { V[((long long)j) + ((long long)N) * ((long long)i)] = std::conj(VH[((long long)j) * ((long long)ldv) + ((long long)i)]); }
   }
+  return rank;
 }
 
 void DenseMatrix::compress(double epi, std::vector<long long>& recipe, std::vector<std::complex<double>>& basis) {
@@ -132,6 +132,30 @@ void DenseMatrix::compress(double epi, std::vector<long long>& recipe, std::vect
     }
     A.shrink_to_fit();
   }
+}
+
+static inline void MPI_Allreduce_large(unsigned char* data, long long len, MPI_Comm comm) {
+  if (0x40000000ll < len) {
+    MPI_Datatype block_type;
+    MPI_Type_contiguous(1 << 30, MPI_BYTE, &block_type); MPI_Type_commit(&block_type);
+    int blocks = int(((unsigned long long)len) >> 30) & 0x3fffffff, rem = int(len) & 0x3fffffff;
+    MPI_Allreduce(MPI_IN_PLACE, data, blocks, block_type, MPI_BOR, comm); MPI_Type_free(&block_type);
+    if (rem) { MPI_Allreduce(MPI_IN_PLACE, &data[((long long)blocks) << 30], rem, MPI_BYTE, MPI_BOR, comm); }
+  } else { MPI_Allreduce(MPI_IN_PLACE, data, int(len), MPI_BYTE, MPI_BOR, comm); }
+}
+
+void DenseMatrix::copyFromA(const DenseMatrix& matA) {
+  assert(rowOffsets.back() == matA.rowOffsets.back() && N == matA.N);
+  std::fill(A.begin(), A.end(), std::complex<double>(0., 0.));
+  long long row_begin = std::max(rowOffsets[prime_rank], matA.rowOffsets[matA.prime_rank]);
+  long long row_end = std::min(rowOffsets[prime_rank + 1], matA.rowOffsets[matA.prime_rank + 1]);
+  if (row_begin < row_end) {
+    const std::complex<double>* src = &(matA.A)[(row_begin - matA.rowOffsets[matA.prime_rank]) * N];
+    std::complex<double>* dst = &A[(row_begin - rowOffsets[prime_rank]) * N];
+    std::copy(src, &src[(row_end - row_begin) * N], dst);
+  }
+  if (sub != MPI_COMM_NULL)
+  { MPI_Allreduce_large((unsigned char*)&A[0], sizeof(std::complex<double>) * N * (rowOffsets[prime_rank + 1] - rowOffsets[prime_rank]), sub); }
 }
 
 void DenseMatrix::AijBlock(long long mA, long long nA, long long iA, long long jA, std::complex<double>* A_out, long long stride) const {

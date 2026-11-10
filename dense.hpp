@@ -17,5 +17,6 @@ public:
   void AijBlock(long long mA, long long nA, long long iA, long long jA, std::complex<double>* A_out, long long stride) const;
   void AijSetZero(long long mA, long long nA, long long iA, long long jA);
   void compress(double epi, std::vector<long long>& recipe, std::vector<std::complex<double>>& basis);
+  void copyFromA(const DenseMatrix& A);
 };
 

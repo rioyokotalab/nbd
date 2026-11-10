@@ -6,7 +6,6 @@
 #include <mpi.h>
 
 class DenseMatrix;
-class BasisBuilder;
 class CSR;
 class Cell;
 class H2MatrixComm;

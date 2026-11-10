@@ -1,176 +1,107 @@
 
 #include <h2matrix.hpp>
-#include <basis_builder.hpp>
 #include <build_tree.hpp>
 #include <comm-mpi.hpp>
 #include <csr.hpp>
 #include <dense.hpp>
 #include <lapack_f2c.hpp>
-#include <cassert>
 
 #include <numeric>
 #include <algorithm>
 
 inline void agemv(char transA, int M, int N, const std::complex<double>* A, int lda, const std::complex<double>* X, int beta, std::complex<double>* B)
 { int incx = 1; std::complex<double> one(1., 0.), zero(0., 0.); zgemv_(&transA, &M, &N, &one, A, &lda, X, &incx, beta ? &one : &zero, B, &incx); }
-inline void nngemm(int M, int N, int K, const std::complex<double>* A, int lda, const std::complex<double>* B, int ldb, std::complex<double>* C, int ldc)
-{ char transA = 'N'; std::complex<double> one(1., 0.), zero(0., 0.); zgemm_(&transA, &transA, &M, &N, &K, &one, A, &lda, B, &ldb, &zero, C, &ldc); }
 
-void H2Matrix::eval(Cell cells[], const BasisBuilder& row_side, const BasisBuilder& col_side, const CSR& Far_local, const CSR& Far, const H2MatrixComm& comm) {
-  long long xlen = comm.lenNeighbors();
+void H2Matrix::evalLeafA(double epi, DenseMatrix& matA, const long long localM[], const long long localN[], const CSR& Far_local, const H2MatrixComm& comm, long long localNoffset) {
   long long ibegin = comm.oLocal();
   long long nodes = comm.lenLocal();
-  long long ybegin = comm.oGlobal();
-
-  std::vector<long long> Dims(xlen), DimsLr(xlen);
-  URowPrefixes.resize(xlen + 1); UColPrefixes.resize(xlen + 1);
-  VRowPrefixes.resize(xlen + 1); VColPrefixes.resize(xlen + 1);
-  URowPrefixes[0] = UColPrefixes[0] = VRowPrefixes[0] = VColPrefixes[0] = 0;
-
-  UPrefixes.resize(nodes + 1); VPrefixes.resize(nodes + 1);
-  CPrefixes.resize(Far_local.RowIndex[nodes] + 1);
-  UPrefixes[0] = CPrefixes[0] = 0;
-
-  std::copy(row_side.M.begin(), row_side.M.end(), &Dims[ibegin]);
-  std::copy(row_side.Ranks.begin(), row_side.Ranks.end(), &DimsLr[ibegin]);
-  std::transform(Dims.begin() + ibegin, Dims.begin() + ibegin + nodes, DimsLr.begin() + ibegin, UPrefixes.begin() + 1, std::multiplies<long long>());
-
-  std::vector<long long> seq(xlen + 1);
-  std::iota(seq.begin(), seq.end(), 0ll);
-  comm.neighbor_bcast(Dims.data(), seq.data());
-  comm.neighbor_bcast(DimsLr.data(), seq.data());
-
-  std::partial_sum(Dims.begin(), Dims.end(), URowPrefixes.begin() + 1);
-  std::partial_sum(DimsLr.begin(), DimsLr.end(), UColPrefixes.begin() + 1);
-  std::partial_sum(UPrefixes.begin() + 1, UPrefixes.end(), UPrefixes.begin() + 1);
-  std::copy(UPrefixes.begin(), UPrefixes.end(), VPrefixes.begin());
-  std::copy(URowPrefixes.begin(), URowPrefixes.end(), VRowPrefixes.begin());
-  std::copy(UColPrefixes.begin(), UColPrefixes.end(), VColPrefixes.begin());
-  U.resize(UPrefixes.back());
-  V.resize(VPrefixes.back());
-
-  for (long long i = 0; i < nodes; i++)
-    std::transform(Far_local.ColIndex.begin() + Far_local.RowIndex[i], Far_local.ColIndex.begin() + Far_local.RowIndex[i + 1], CPrefixes.begin() + Far_local.RowIndex[i] + 1,
-      [&](long long col) { return (UColPrefixes[i + ibegin + 1] - UColPrefixes[i + ibegin]) * (VColPrefixes[col + 1] - VColPrefixes[col]); });
-
-  std::partial_sum(CPrefixes.begin() + 1, CPrefixes.end(), CPrefixes.begin() + 1);
-  C.resize(CPrefixes.back());
-
-  std::vector<long long> basisPrefixes(xlen + 1);
-  basisPrefixes[0] = 0;
-
-  std::transform(DimsLr.begin() + ibegin, DimsLr.begin() + ibegin + nodes, &cells[ybegin], basisPrefixes.begin() + ibegin + 1, [](long long d, const Cell& c) { return d * (c.M[1] - c.M[0]); });
-  comm.neighbor_bcast(&basisPrefixes[1], seq.data());
-  std::partial_sum(basisPrefixes.begin() + 1, basisPrefixes.end(), basisPrefixes.begin() + 1);
-
-  std::vector<std::complex<double>> fs_basis(basisPrefixes.back());
-  for (long long i = 0; i < nodes; i++)
-    std::copy(col_side.basis_full[i].begin(), col_side.basis_full[i].end(), fs_basis.begin() + basisPrefixes[i + ibegin]);
-  comm.neighbor_bcast(fs_basis.data(), basisPrefixes.data());
-
-  for (long long i = 0; i < nodes; i++) {
-    long long M = URowPrefixes[i + ibegin + 1] - URowPrefixes[i + ibegin];
-    long long K = UColPrefixes[i + ibegin + 1] - UColPrefixes[i + ibegin];
-    std::copy(row_side.basis[i].begin(), row_side.basis[i].begin() + (M * K), &U[UPrefixes[i]]);
-    std::copy(col_side.basis[i].begin(), col_side.basis[i].begin() + (M * K), &V[VPrefixes[i]]);
-
-    long long col = 0;
-    for (long long ij = Far_local.RowIndex[i]; ij < Far_local.RowIndex[i + 1] && 0 < K; ij++) {
-      long long j = Far_local.ColIndex[ij];
-      long long N = VColPrefixes[j + 1] - VColPrefixes[j];
-      long long cj = Far.ColIndex[ij + Far.RowIndex[ybegin]];
-      long long Nf = cells[cj].M[1] - cells[cj].M[0];
-
-      nngemm(K, N, Nf, &(row_side.fmatrix[i])[col * K], K, &fs_basis[basisPrefixes[j]], Nf, &C[CPrefixes[ij]], K);
-      col += Nf;
-    }
-  }
-}
-
-void H2Matrix::evalLeafA(double epi, DenseMatrix& matA, Cell cells[], const CSR& Far_local, const H2MatrixComm& comm) {
-  long long ibegin = comm.oLocal();
-  long long nodes = comm.lenLocal();
-  long long ybegin = comm.oGlobal();
   long long xlen = comm.lenNeighbors();
-
-  std::vector<long long> DimsM(xlen), DimsN(xlen);
-  std::transform(&cells[ybegin], &cells[ybegin + nodes], &DimsM[ibegin], [](const Cell& c) { return c.M[1] - c.M[0]; });
-  std::transform(&cells[ybegin], &cells[ybegin + nodes], &DimsN[ibegin], [](const Cell& c) { return c.N[1] - c.N[0]; });
-
-  APrefixes.resize(nodes + 1);
-  std::transform(&DimsM[ibegin], &DimsM[ibegin + nodes], &DimsN[ibegin], APrefixes.begin() + 1, std::multiplies<long long>());
-  std::partial_sum(APrefixes.begin() + 1, APrefixes.end(), APrefixes.begin() + 1);
-  APrefixes[0] = 0; A.resize(APrefixes.back());
-
-  for (long long i = 0; i < nodes; ++i) {
-    long long ci = i + ybegin;
-    long long y = cells[ci].M[0], M = cells[ci].M[1] - y;
-    long long x = cells[ci].N[0], N = cells[ci].N[1] - x;
-    matA.AijBlock(M, N, y, x, &A[APrefixes[i]], M);
-    matA.AijSetZero(M, N, y, x);
-  }
-
-  long long colOffset = 0ll;
-  std::vector<long long> DimsMLr(&DimsM[ibegin], &DimsM[ibegin + nodes]), DimsNLr(&DimsN[ibegin], &DimsN[ibegin + nodes]);
-  matA.compress(epi, DimsMLr, U);
-  do {
-    DenseMatrix matAH(std::reduce(&DimsN[ibegin], &DimsN[ibegin + nodes]), matA.rowOffsets.back(), matA.prime, matA.sub);
-    matA.adjointA(matAH); matAH.compress(epi, DimsNLr, V);
-    matA = DenseMatrix(std::reduce(DimsMLr.begin(), DimsMLr.end()), matAH.rowOffsets.back(), matAH.prime, matAH.sub);
-    matAH.adjointA(matA); colOffset = matAH.rowOffsets[matAH.prime_rank];
-  } while(0);
 
   URowPrefixes.resize(xlen + 1); UColPrefixes.resize(xlen + 1);
   VRowPrefixes.resize(xlen + 1); VColPrefixes.resize(xlen + 1);
-  URowPrefixes[0] = UColPrefixes[0] = VRowPrefixes[0] = VColPrefixes[0] = 0;
-
   UPrefixes.resize(nodes + 1); VPrefixes.resize(nodes + 1);
   CPrefixes.resize(Far_local.RowIndex[nodes] + 1);
-  UPrefixes[0] = VPrefixes[0] = CPrefixes[0] = 0;
 
-  std::transform(&DimsM[ibegin], &DimsM[ibegin + nodes], &DimsMLr[0], UPrefixes.begin() + 1, std::multiplies<long long>());
-  std::transform(&DimsN[ibegin], &DimsN[ibegin + nodes], &DimsNLr[0], VPrefixes.begin() + 1, std::multiplies<long long>());
-  std::partial_sum(UPrefixes.begin() + 1, UPrefixes.end(), UPrefixes.begin() + 1);
-  std::partial_sum(VPrefixes.begin() + 1, VPrefixes.end(), VPrefixes.begin() + 1);
+  if (0ll <= localNoffset) {
+    APrefixes.resize(nodes + 1);
+    std::transform(localM, &localM[nodes], localN, APrefixes.begin() + 1, std::multiplies<long long>());
+    std::partial_sum(APrefixes.begin() + 1, APrefixes.end(), APrefixes.begin() + 1);
+    APrefixes[0] = 0ll; A.resize(APrefixes.back());
 
-  assert(UPrefixes.back() == (long long)U.size());
-  assert(VPrefixes.back() == (long long)V.size());
-
-  if (nodes < xlen) {
-    std::vector<long long> tM(std::move(DimsMLr)), tN(std::move(DimsNLr));
-    DimsMLr.resize(xlen); std::copy(tM.begin(), tM.end(), &DimsMLr[ibegin]);
-    DimsNLr.resize(xlen); std::copy(tN.begin(), tN.end(), &DimsNLr[ibegin]);
+    long long localMoffset = matA.rowOffsets[matA.prime_rank];
+    for (long long i = 0ll; i < nodes; ++i) {
+      long long M = localM[i], N = localN[i];
+      matA.AijBlock(M, N, localMoffset, localNoffset, &A[APrefixes[i]], M);
+      matA.AijSetZero(M, N, localMoffset, localNoffset);
+      localMoffset += M; localNoffset += N;
+    }
   }
 
-  std::vector<long long> seq(xlen + 1);
-  std::iota(seq.begin(), seq.end(), 0ll);
-  comm.neighbor_bcast(DimsM.data(), seq.data());
-  comm.neighbor_bcast(DimsMLr.data(), seq.data());
-  comm.neighbor_bcast(DimsN.data(), seq.data());
-  comm.neighbor_bcast(DimsNLr.data(), seq.data());
+  if (Far_local.RowIndex[nodes]) {
+    long long colOffset = 0ll;
+    URowPrefixes[0] = UColPrefixes[0] = VRowPrefixes[0] = VColPrefixes[0] = UPrefixes[0] = VPrefixes[0] = CPrefixes[0] = 0ll;
+    std::vector<long long> DimsMLr(&localM[0], &localM[nodes]), DimsNLr(&localN[0], &localN[nodes]);
+    matA.compress(epi, DimsMLr, U);
+    do {
+      DenseMatrix matAH(std::reduce(&localN[0], &localN[nodes]), matA.rowOffsets.back(), matA.prime, matA.sub);
+      matA.adjointA(matAH); matAH.compress(epi, DimsNLr, V);
+      matA = DenseMatrix(std::reduce(DimsMLr.begin(), DimsMLr.end()), matAH.rowOffsets.back(), matAH.prime, matAH.sub);
+      matAH.adjointA(matA); colOffset = matAH.rowOffsets[matAH.prime_rank];
+    } while(0);
 
-  std::partial_sum(DimsM.begin(), DimsM.end(), URowPrefixes.begin() + 1);
-  std::partial_sum(DimsMLr.begin(), DimsMLr.end(), UColPrefixes.begin() + 1);
-  std::partial_sum(DimsN.begin(), DimsN.end(), VRowPrefixes.begin() + 1);
-  std::partial_sum(DimsNLr.begin(), DimsNLr.end(), VColPrefixes.begin() + 1);
+    std::transform(&localM[0], &localM[nodes], &DimsMLr[0], UPrefixes.begin() + 1, std::multiplies<long long>());
+    std::transform(&localN[0], &localN[nodes], &DimsNLr[0], VPrefixes.begin() + 1, std::multiplies<long long>());
+    std::inclusive_scan(UPrefixes.begin() + 1, UPrefixes.end(), UPrefixes.begin() + 1);
+    std::inclusive_scan(VPrefixes.begin() + 1, VPrefixes.end(), VPrefixes.begin() + 1);
 
-  for (long long i = 0; i < nodes; i++)
-    std::transform(Far_local.ColIndex.begin() + Far_local.RowIndex[i], Far_local.ColIndex.begin() + Far_local.RowIndex[i + 1], CPrefixes.begin() + Far_local.RowIndex[i] + 1,
-      [&](long long col) { return (UColPrefixes[i + ibegin + 1] - UColPrefixes[i + ibegin]) * (VColPrefixes[col + 1] - VColPrefixes[col]); });
-  std::partial_sum(CPrefixes.begin() + 1, CPrefixes.end(), CPrefixes.begin() + 1);
-  C.resize(CPrefixes.back());
-
-  long long rowOffset = matA.rowOffsets[matA.prime_rank] - UColPrefixes[ibegin]; colOffset -= VColPrefixes[ibegin];
-  for (long long i = 0; i < nodes; i++) {
-    long long mC = UColPrefixes[i + ibegin + 1] - UColPrefixes[i + ibegin];
-    long long y = rowOffset + UColPrefixes[ibegin + i];
-    for (long long ij = Far_local.RowIndex[i]; ij < Far_local.RowIndex[i + 1] && 0 < mC; ij++) {
-      long long j = Far_local.ColIndex[ij];
-      long long nC = VColPrefixes[j + 1] - VColPrefixes[j];
-      long long x = colOffset + VColPrefixes[j];
-      matA.AijBlock(mC, nC, y, x, &C[CPrefixes[ij]], mC);
-      matA.AijSetZero(mC, nC, y, x);
+    std::vector<long long> seq(xlen + 1); std::vector<std::array<long long, 4>> dims(xlen + 1);
+    for (long long i = 0ll; i < nodes; ++i) { dims[i + ibegin] = std::array<long long, 4>{ localM[i], localN[i], DimsMLr[i], DimsNLr[i] }; }
+    for (long long i = 0ll; i <= xlen; ++i) { seq[i] = i * 4ll; }
+    comm.neighbor_bcast((long long*)dims.data(), seq.data());
+    std::inclusive_scan(dims.begin(), dims.end(), dims.begin(),
+      [](const std::array<long long, 4>& a, const std::array<long long, 4>& b) { return std::array<long long, 4>{ a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3] }; });
+    
+    for (long long i = 0ll; i < xlen; ++i) {
+      long long i1 = i + 1ll; const auto& [m, n, k, l] = dims[i];
+      URowPrefixes[i1] = m; VRowPrefixes[i1] = n; UColPrefixes[i1] = k; VColPrefixes[i1] = l;
     }
+
+    for (long long i = 0ll; i < nodes; ++i)
+      std::transform(Far_local.ColIndex.begin() + Far_local.RowIndex[i], Far_local.ColIndex.begin() + Far_local.RowIndex[i + 1], CPrefixes.begin() + Far_local.RowIndex[i] + 1,
+        [&](long long col) { return (UColPrefixes[i + ibegin + 1] - UColPrefixes[i + ibegin]) * (VColPrefixes[col + 1] - VColPrefixes[col]); });
+    std::inclusive_scan(CPrefixes.begin() + 1, CPrefixes.end(), CPrefixes.begin() + 1);
+    C.resize(CPrefixes.back());
+
+    long long rowOffset = matA.rowOffsets[matA.prime_rank] - UColPrefixes[ibegin]; colOffset -= VColPrefixes[ibegin];
+    for (long long i = 0; i < nodes; i++) {
+      long long mC = UColPrefixes[i + ibegin + 1] - UColPrefixes[i + ibegin];
+      long long y = rowOffset + UColPrefixes[ibegin + i];
+      for (long long ij = Far_local.RowIndex[i]; ij < Far_local.RowIndex[i + 1] && 0 < mC; ij++) {
+        long long j = Far_local.ColIndex[ij];
+        long long nC = VColPrefixes[j + 1] - VColPrefixes[j];
+        long long x = colOffset + VColPrefixes[j];
+        matA.AijBlock(mC, nC, y, x, &C[CPrefixes[ij]], mC);
+        matA.AijSetZero(mC, nC, y, x);
+      }
+    }
+  } else {
+    std::vector<long long> seq(xlen + 1); std::vector<std::array<long long, 2>> dims(xlen + 1);
+    for (long long i = 0ll; i < nodes; ++i) { dims[i + ibegin] = std::array<long long, 2>{ localM[i], localN[i] }; }
+    for (long long i = 0ll; i <= xlen; ++i) { seq[i] = i * 2ll; }
+    comm.neighbor_bcast((long long*)dims.data(), seq.data());
+    std::inclusive_scan(dims.begin(), dims.end(), dims.begin(),
+      [](const std::array<long long, 2>& a, const std::array<long long, 2>& b) { return std::array<long long, 2>{ a[0] + b[0], a[1] + b[1] }; });
+    
+    URowPrefixes[0] = VRowPrefixes[0] = CPrefixes[0] = 0ll;
+    for (long long i = 0ll; i < xlen; ++i) {
+      long long i1 = i + 1ll; const auto& [m, n] = dims[i];
+      URowPrefixes[i1] = m; VRowPrefixes[i1] = n;
+    }
+
+    std::fill(UColPrefixes.begin(), UColPrefixes.end(), 0ll);
+    std::fill(VColPrefixes.begin(), VColPrefixes.end(), 0ll);
+    std::fill(UPrefixes.begin(), UPrefixes.end(), 0ll);
+    std::fill(VPrefixes.begin(), VPrefixes.end(), 0ll);
   }
 }
 
@@ -221,17 +152,17 @@ void H2Matrix::matVecHorizontalandDownwardPass(std::complex<double>* Y_out, cons
 void H2Matrix::matVecLeafHorizontalPass(std::complex<double>* X_io, const std::complex<double>* Z, std::complex<double>* Y, const CSR& Far, const H2MatrixComm& comm) const {
   long long ibegin = comm.oLocal();
   long long nodes = comm.lenLocal();
-  long long lenX = URowPrefixes[ibegin + nodes] - URowPrefixes[ibegin];
+  long long lenX = VRowPrefixes[ibegin + nodes] - VRowPrefixes[ibegin];
 
-  std::vector<std::complex<double>> X(URowPrefixes.back(), std::complex<double>(0., 0.));
-  std::copy(&X_io[0], &X_io[lenX], X.begin() + URowPrefixes[ibegin]);
-  comm.neighbor_bcast(X.data(), URowPrefixes.data());
+  std::vector<std::complex<double>> X(VRowPrefixes.back(), std::complex<double>(0., 0.));
+  std::copy(&X_io[0], &X_io[lenX], X.begin() + VRowPrefixes[ibegin]);
+  comm.neighbor_bcast(X.data(), VRowPrefixes.data());
   std::fill(&X_io[0], &X_io[lenX], std::complex<double>(0., 0.));
 
   for (long long i = 0; i < nodes; i++) {
     long long M = URowPrefixes[i + ibegin + 1] - URowPrefixes[i + ibegin];
     long long K = UColPrefixes[i + ibegin + 1] - UColPrefixes[i + ibegin];
-    std::complex<double>* w = X_io + URowPrefixes[i + ibegin] - URowPrefixes[ibegin];
+    std::complex<double>* w = &X_io[URowPrefixes[i + ibegin] - URowPrefixes[ibegin]];
     
     if (0 < K) {
       std::complex<double>* y = &Y[UColPrefixes[i + ibegin]];
@@ -248,9 +179,9 @@ void H2Matrix::matVecLeafHorizontalPass(std::complex<double>* X_io, const std::c
       agemv('N', M, K, u, M, y, 1, w);
     }
 
-    const std::complex<double>* x = &X[URowPrefixes[i + ibegin]];
+    long long N = VRowPrefixes[i + ibegin + 1] - VRowPrefixes[i + ibegin];
+    const std::complex<double>* x = &X[VRowPrefixes[i + ibegin]];
     const std::complex<double>* a = &A[APrefixes[i]];
-    agemv('N', M, M, a, M, x, 1, w);
+    agemv('N', M, N, a, M, x, 1, w);
   }
 }
-

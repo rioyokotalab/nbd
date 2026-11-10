@@ -1,18 +1,15 @@
 
-#include <basis_builder.hpp>
 #include <build_tree.hpp>
 #include <comm-mpi.hpp>
 #include <csr.hpp>
 #include <dense.hpp>
 #include <h2matrix.hpp>
 #include <solver.hpp>
-#include <svd_basis.hpp>
 
 #include <test_funcs.hpp>
 
 int main(int argc, char* argv[]) {
   MPI_Init(&argc, &argv);
-  svd_lib_init();
 
   long long Nbody = argc > 1 ? std::atoll(argv[1]) : 2048;
   long long leaf_size = argc > 2 ? std::atoll(argv[2]) : 256;
@@ -67,7 +64,7 @@ int main(int argc, char* argv[]) {
   DenseMatrix denseX(matA.local_bodies.second - matA.local_bodies.first, 1, world, MPI_COMM_NULL);
   std::copy(&Xbody[matA.local_bodies.first], &Xbody[matA.local_bodies.second], denseX.A.data());
   double refmatvec_time = MPI_Wtime();
-  denseA.matVecA(denseX, &X2[0]);
+  denseX.matVecA(denseA, &X2[0]);
   refmatvec_time = MPI_Wtime() - refmatvec_time;
 
   MPI_Barrier(world);
@@ -103,7 +100,6 @@ int main(int argc, char* argv[]) {
   matA.free_all_comms();
   MPI_Comm_free(&world);
   MPI_Finalize();
-  svd_lib_finalize();
   return 0;
 }
 

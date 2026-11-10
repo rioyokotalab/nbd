@@ -1,6 +1,5 @@
 
 #include <solver.hpp>
-#include <basis_builder.hpp>
 #include <build_tree.hpp>
 #include <comm-mpi.hpp>
 #include <csr.hpp>
@@ -30,33 +29,25 @@ H2MatrixSolver::H2MatrixSolver(const std::vector<Cell>& cells, const CSR& Far, l
 }
 
 void H2MatrixSolver::evalMatVecA(DenseMatrix& matA, double epi, Cell cells[], const CSR& Far) {
-  std::vector<BasisBuilder> row_side, col_side;
-  row_side.reserve(levels + 1);
-  col_side.reserve(levels + 1);
-  row_side.emplace_back(0, 1, cells, Far);
-  col_side.emplace_back(0, 1, cells, Far);
-
-  for (long long l = 1; l <= levels; l++) {
-    row_side.emplace_back(comm[l].oGlobal(), comm[l].lenLocal(), cells, Far, row_side[l - 1]);
-    col_side.emplace_back(comm[l].oGlobal(), comm[l].lenLocal(), cells, Far, col_side[l - 1]);
-  }
-
-  DenseMatrix AH(matA.rowOffsets[matA.prime_rank + 1] - matA.rowOffsets[matA.prime_rank], matA.N, matA.prime, matA.sub);
-  matA.adjointA(AH);
-
-  row_side[levels].evalLeafFMatrix(epi, matA, cells);
-  std::copy(row_side[levels].Ranks.begin(), row_side[levels].Ranks.end(), col_side[levels].Ranks.begin());
-  col_side[levels].evalLeafFMatrix(epi, AH, cells);
-
-  A[levels].evalLeafA(epi, matA, cells, Far_local[levels], comm[levels]);
-  A[levels].eval(cells, row_side[levels], col_side[levels], Far_local[levels], Far, comm[levels]);
-  AH.A.clear(); AH.A.shrink_to_fit();
+  long long llen = comm[levels].lenLocal();
+  long long gbegin = comm[levels].oGlobal();
+  std::vector<long long> localM(llen), localN(llen);
+  std::transform(&cells[gbegin], &cells[gbegin + llen], localM.begin(), [](const Cell& c) { return c.M[1] - c.M[0]; });
+  std::transform(&cells[gbegin], &cells[gbegin + llen], localN.begin(), [](const Cell& c) { return c.N[1] - c.N[0]; });
+  A[levels].evalLeafA(epi, matA, &localM[0], &localN[0], Far_local[levels], comm[levels], cells[gbegin].N[0]);
 
   for (long long l = levels - 1; l >= 0; l--) {
-    row_side[l].evalInnerFMatrix(epi, row_side[l + 1], cells, comm[l]);
-    std::copy(row_side[l].Ranks.begin(), row_side[l].Ranks.end(), col_side[l].Ranks.begin());
-    col_side[l].evalInnerFMatrix(epi, col_side[l + 1], cells, comm[l]);
-    A[l].eval(cells, row_side[l], col_side[l], Far_local[l], Far, comm[l]);
+    do {
+      DenseMatrix matAl(A[l + 1].UColPrefixes.back(), matA.N, comm[l].RepComm, comm[l].DupComm);
+      matAl.copyFromA(matA); matA = std::move(matAl);
+    } while(0);
+    llen = comm[l].lenLocal(); gbegin = comm[l].oGlobal(); localM.resize(llen); localN.resize(llen);
+    for (long long i = 0; i < llen; ++i) {
+      long long cbegin = cells[gbegin + i].Child[0] - cells[gbegin].Child[0], cend = cells[gbegin + i].Child[1] - cells[gbegin].Child[0];
+      localM[i] = A[l + 1].UColPrefixes[cend] - A[l + 1].UColPrefixes[cbegin];
+      localN[i] = A[l + 1].VColPrefixes[cend] - A[l + 1].VColPrefixes[cbegin];
+    }
+    A[l].evalLeafA(epi, matA, &localM[0], &localN[0], Far_local[l], comm[l]);
   }
 }
 
@@ -65,8 +56,8 @@ void H2MatrixSolver::allocRHSwork(std::vector<long long>& iwork, std::vector<std
   long long* lenX = &iwork[0], *lenY = &iwork[levels + 2ll], *locV = &iwork[(levels * 2ll) + 4ll], *locU = &iwork[(levels * 3ll) + 4ll];
   lenX[0] = lenY[0] = 0;
   for (long long l = 0; l < levels; l++) {
-    lenX[l + 1] = A[l].VRowPrefixes.back();
-    lenY[l + 1] = A[l].URowPrefixes.back();
+    lenX[l + 1] = 0ll < l ? A[l].VRowPrefixes.back() : 0ll;
+    lenY[l + 1] = 0ll < l ? A[l].URowPrefixes.back() : 0ll;
     locV[l] = A[l + 1].VColPrefixes[comm[l].oLocalChild(comm[l + 1]).first];
     locU[l] = A[l + 1].UColPrefixes[comm[l].oLocalChild(comm[l + 1]).first];
   }
