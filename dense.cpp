@@ -45,7 +45,7 @@ void DenseMatrix::matVecA(const DenseMatrix& X, std::complex<double>* B) const {
     MPI_Allgatherv(&(X.A)[0], int(X.rowOffsets[prime_rank + 1] - X.rowOffsets[prime_rank]), MPI_C_DOUBLE_COMPLEX, &X_in[0], &recvcounts[0], &displs[0], MPI_C_DOUBLE_COMPLEX, prime);
     int M = int(rowOffsets[prime_rank + 1] - rowOffsets[prime_rank]);
     auto gemv = [](int m, int n, const std::complex<double>* a, const std::complex<double>* x, std::complex<double>* b) {
-      char transA = 'T'; int incx = 1; std::complex<double> one(1., 0.), zero(0., 0.); zgemv_(&transA, &n, &m, &one, a, &n, x, &incx, &zero, b, &incx);
+      char transA = 'C'; int incx = 1; std::complex<double> one(1., 0.), zero(0., 0.); zgemv_(&transA, &n, &m, &one, a, &n, x, &incx, &zero, b, &incx);
     };
     gemv(M, N, &A[0], &X_in[0], B);
   }
@@ -66,7 +66,7 @@ void DenseMatrix::adjointA(DenseMatrix& B) const {
       MPI_Sendrecv(&AH[0], NA, typeA, i, 0, &BH[0], NB, typeB, i, 0, prime, MPI_STATUS_IGNORE);
       std::complex<double>* dst = &(B.A)[rowOffsets[i]];
       for (long long x = 0; x < MB; ++x) for (long long y = 0; y < NB; ++y)
-      { dst[y + B.N * x] = std::conj(BH[y + NB * x]); }
+      { dst[y + B.N * x] = BH[y + NB * x]; }
     }
     MPI_Type_free(&typeA); MPI_Type_free(&typeB);
   }
@@ -142,7 +142,7 @@ void DenseMatrix::AijBlock(long long mA, long long nA, long long iA, long long j
     const std::complex<double>* src = &A[(row_begin - rowOffsets[prime_rank]) * N + col_begin];
     std::complex<double>* dst = &A_out[(row_begin - iA) + (col_begin - jA) * stride];
     for (long long x = 0; x < cols; ++x) for (long long y = 0; y < rows; ++y)
-    { dst[y + stride * x] = src[y * N + x]; }
+    { dst[y + stride * x] = std::conj(src[y * N + x]); }
   }
 }
 

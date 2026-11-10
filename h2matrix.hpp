@@ -27,7 +27,7 @@ public:
   std::vector<std::complex<double>> C;
   
   void eval(Cell cells[], const BasisBuilder& row_side, const BasisBuilder& col_side, const CSR& Far_local, const CSR& Far, const H2MatrixComm& comm);
-  void evalLeafA(DenseMatrix& matA, Cell cells[], const CSR& Far_local, const CSR& Far, const H2MatrixComm& comm);
+  void evalLeafA(double epi, DenseMatrix& matA, Cell cells[], const CSR& Far_local, const H2MatrixComm& comm);
 
   void matVecUpwardPass(const std::complex<double>* X_in, std::complex<double>* Z, const H2MatrixComm& comm) const;
   void matVecHorizontalandDownwardPass(std::complex<double>* Y_out, const std::complex<double>* Z, std::complex<double>* Y, const CSR& Far) const;

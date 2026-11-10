@@ -6,6 +6,7 @@
 #include <csr.hpp>
 #include <dense.hpp>
 #include <lapack_f2c.hpp>
+#include <cassert>
 
 #include <numeric>
 #include <algorithm>
@@ -50,7 +51,7 @@ void H2Matrix::eval(Cell cells[], const BasisBuilder& row_side, const BasisBuild
 
   for (long long i = 0; i < nodes; i++)
     std::transform(Far_local.ColIndex.begin() + Far_local.RowIndex[i], Far_local.ColIndex.begin() + Far_local.RowIndex[i + 1], CPrefixes.begin() + Far_local.RowIndex[i] + 1,
-      [&](long long col) { return (URowPrefixes[i + ibegin + 1] - URowPrefixes[i + ibegin]) * (VRowPrefixes[col + 1] - VRowPrefixes[col]); });
+      [&](long long col) { return (UColPrefixes[i + ibegin + 1] - UColPrefixes[i + ibegin]) * (VColPrefixes[col + 1] - VColPrefixes[col]); });
 
   std::partial_sum(CPrefixes.begin() + 1, CPrefixes.end(), CPrefixes.begin() + 1);
   C.resize(CPrefixes.back());
@@ -86,16 +87,20 @@ void H2Matrix::eval(Cell cells[], const BasisBuilder& row_side, const BasisBuild
   }
 }
 
-void H2Matrix::evalLeafA(DenseMatrix& matA, Cell cells[], const CSR& Far_local, const CSR& Far, const H2MatrixComm& comm) {
+void H2Matrix::evalLeafA(double epi, DenseMatrix& matA, Cell cells[], const CSR& Far_local, const H2MatrixComm& comm) {
   long long ibegin = comm.oLocal();
   long long nodes = comm.lenLocal();
   long long ybegin = comm.oGlobal();
+  long long xlen = comm.lenNeighbors();
+
+  std::vector<long long> DimsM(xlen), DimsN(xlen);
+  std::transform(&cells[ybegin], &cells[ybegin + nodes], &DimsM[ibegin], [](const Cell& c) { return c.M[1] - c.M[0]; });
+  std::transform(&cells[ybegin], &cells[ybegin + nodes], &DimsN[ibegin], [](const Cell& c) { return c.N[1] - c.N[0]; });
 
   APrefixes.resize(nodes + 1);
-  std::transform(URowPrefixes.begin() + ibegin, URowPrefixes.begin() + (ibegin + nodes), URowPrefixes.begin() + (ibegin + 1), APrefixes.begin() + 1, [](long long start, long long end) { return (end - start) * (end - start); });
+  std::transform(&DimsM[ibegin], &DimsM[ibegin + nodes], &DimsN[ibegin], APrefixes.begin() + 1, std::multiplies<long long>());
   std::partial_sum(APrefixes.begin() + 1, APrefixes.end(), APrefixes.begin() + 1);
-  APrefixes[0] = 0;
-  A.resize(APrefixes.back());
+  APrefixes[0] = 0; A.resize(APrefixes.back());
 
   for (long long i = 0; i < nodes; ++i) {
     long long ci = i + ybegin;
@@ -103,6 +108,69 @@ void H2Matrix::evalLeafA(DenseMatrix& matA, Cell cells[], const CSR& Far_local, 
     long long x = cells[ci].N[0], N = cells[ci].N[1] - x;
     matA.AijBlock(M, N, y, x, &A[APrefixes[i]], M);
     matA.AijSetZero(M, N, y, x);
+  }
+
+  long long colOffset = 0ll;
+  std::vector<long long> DimsMLr(&DimsM[ibegin], &DimsM[ibegin + nodes]), DimsNLr(&DimsN[ibegin], &DimsN[ibegin + nodes]);
+  matA.compress(epi, DimsMLr, U);
+  do {
+    DenseMatrix matAH(std::reduce(&DimsN[ibegin], &DimsN[ibegin + nodes]), matA.rowOffsets.back(), matA.prime, matA.sub);
+    matA.adjointA(matAH); matAH.compress(epi, DimsNLr, V);
+    matA = DenseMatrix(std::reduce(DimsMLr.begin(), DimsMLr.end()), matAH.rowOffsets.back(), matAH.prime, matAH.sub);
+    matAH.adjointA(matA); colOffset = matAH.rowOffsets[matAH.prime_rank];
+  } while(0);
+
+  URowPrefixes.resize(xlen + 1); UColPrefixes.resize(xlen + 1);
+  VRowPrefixes.resize(xlen + 1); VColPrefixes.resize(xlen + 1);
+  URowPrefixes[0] = UColPrefixes[0] = VRowPrefixes[0] = VColPrefixes[0] = 0;
+
+  UPrefixes.resize(nodes + 1); VPrefixes.resize(nodes + 1);
+  CPrefixes.resize(Far_local.RowIndex[nodes] + 1);
+  UPrefixes[0] = VPrefixes[0] = CPrefixes[0] = 0;
+
+  std::transform(&DimsM[ibegin], &DimsM[ibegin + nodes], &DimsMLr[0], UPrefixes.begin() + 1, std::multiplies<long long>());
+  std::transform(&DimsN[ibegin], &DimsN[ibegin + nodes], &DimsNLr[0], VPrefixes.begin() + 1, std::multiplies<long long>());
+  std::partial_sum(UPrefixes.begin() + 1, UPrefixes.end(), UPrefixes.begin() + 1);
+  std::partial_sum(VPrefixes.begin() + 1, VPrefixes.end(), VPrefixes.begin() + 1);
+
+  assert(UPrefixes.back() == (long long)U.size());
+  assert(VPrefixes.back() == (long long)V.size());
+
+  if (nodes < xlen) {
+    std::vector<long long> tM(std::move(DimsMLr)), tN(std::move(DimsNLr));
+    DimsMLr.resize(xlen); std::copy(tM.begin(), tM.end(), &DimsMLr[ibegin]);
+    DimsNLr.resize(xlen); std::copy(tN.begin(), tN.end(), &DimsNLr[ibegin]);
+  }
+
+  std::vector<long long> seq(xlen + 1);
+  std::iota(seq.begin(), seq.end(), 0ll);
+  comm.neighbor_bcast(DimsM.data(), seq.data());
+  comm.neighbor_bcast(DimsMLr.data(), seq.data());
+  comm.neighbor_bcast(DimsN.data(), seq.data());
+  comm.neighbor_bcast(DimsNLr.data(), seq.data());
+
+  std::partial_sum(DimsM.begin(), DimsM.end(), URowPrefixes.begin() + 1);
+  std::partial_sum(DimsMLr.begin(), DimsMLr.end(), UColPrefixes.begin() + 1);
+  std::partial_sum(DimsN.begin(), DimsN.end(), VRowPrefixes.begin() + 1);
+  std::partial_sum(DimsNLr.begin(), DimsNLr.end(), VColPrefixes.begin() + 1);
+
+  for (long long i = 0; i < nodes; i++)
+    std::transform(Far_local.ColIndex.begin() + Far_local.RowIndex[i], Far_local.ColIndex.begin() + Far_local.RowIndex[i + 1], CPrefixes.begin() + Far_local.RowIndex[i] + 1,
+      [&](long long col) { return (UColPrefixes[i + ibegin + 1] - UColPrefixes[i + ibegin]) * (VColPrefixes[col + 1] - VColPrefixes[col]); });
+  std::partial_sum(CPrefixes.begin() + 1, CPrefixes.end(), CPrefixes.begin() + 1);
+  C.resize(CPrefixes.back());
+
+  long long rowOffset = matA.rowOffsets[matA.prime_rank] - UColPrefixes[ibegin]; colOffset -= VColPrefixes[ibegin];
+  for (long long i = 0; i < nodes; i++) {
+    long long mC = UColPrefixes[i + ibegin + 1] - UColPrefixes[i + ibegin];
+    long long y = rowOffset + UColPrefixes[ibegin + i];
+    for (long long ij = Far_local.RowIndex[i]; ij < Far_local.RowIndex[i + 1] && 0 < mC; ij++) {
+      long long j = Far_local.ColIndex[ij];
+      long long nC = VColPrefixes[j + 1] - VColPrefixes[j];
+      long long x = colOffset + VColPrefixes[j];
+      matA.AijBlock(mC, nC, y, x, &C[CPrefixes[ij]], mC);
+      matA.AijSetZero(mC, nC, y, x);
+    }
   }
 }
 

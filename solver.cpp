@@ -48,8 +48,8 @@ void H2MatrixSolver::evalMatVecA(DenseMatrix& matA, double epi, Cell cells[], co
   std::copy(row_side[levels].Ranks.begin(), row_side[levels].Ranks.end(), col_side[levels].Ranks.begin());
   col_side[levels].evalLeafFMatrix(epi, AH, cells);
 
+  A[levels].evalLeafA(epi, matA, cells, Far_local[levels], comm[levels]);
   A[levels].eval(cells, row_side[levels], col_side[levels], Far_local[levels], Far, comm[levels]);
-  A[levels].evalLeafA(matA, cells, Far_local[levels], Far, comm[levels]);
   AH.A.clear(); AH.A.shrink_to_fit();
 
   for (long long l = levels - 1; l >= 0; l--) {
