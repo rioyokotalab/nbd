@@ -13,7 +13,7 @@ find_package(MPI REQUIRED)
 find_package(CUDAToolkit REQUIRED)
 
 add_executable(real.app lorasp.cpp)
-add_executable(complex.app build_tree.cpp comm-mpi.cpp csr.cpp dense.cpp h2matrix.cpp h2matrix.cpp main.cpp solver.cpp)
+add_executable(complex.app dense.cpp hss.cpp main.cpp)
 
 target_link_libraries(real.app BLAS::BLAS LAPACK::LAPACK -llapacke MPI::MPI_CXX CUDA::cudart CUDA::cublas CUDA::cusolver -lnccl)
 target_link_libraries(complex.app BLAS::BLAS LAPACK::LAPACK MPI::MPI_CXX)

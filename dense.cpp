@@ -180,7 +180,7 @@ void DenseMatrix::copyFromA(const DenseMatrix& matA) {
     int sub_rank; MPI_Comm_rank(sub, &sub_rank);
     std::vector<int> src_groups(sub_size);
     MPI_Allgather(&matA.prime_rank, 1, MPI_INT, src_groups.data(), 1, MPI_INT, sub);
-    const auto my_pos = src_groups.begin() + sub_rank;
+    std::vector<int>::iterator my_pos = src_groups.begin() + sub_rank;
     elected = std::find(src_groups.begin(), my_pos, matA.prime_rank) == my_pos;
   }
 
