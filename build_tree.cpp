@@ -20,16 +20,16 @@ void get_bounds(const double* bodies, long long nbodies, double R[], double C[])
 }
 
 void buildBinaryTree(Cell* cells, double* bodies, long long nbodies, long long levels) {
-  cells[0].M[0] = cells[0].N[0] = 0;
-  cells[0].M[1] = cells[0].N[1] = nbodies;
+  cells[0].N[0] = 0;
+  cells[0].N[1] = nbodies;
   get_bounds(bodies, nbodies, cells[0].R.data(), cells[0].C.data());
 
   long long nleaf = 1ll << levels;
   for (long long i = 0; i < nleaf - 1; i++) {
     Cell& ci = cells[i];
     long long sdim = std::distance(ci.R.begin(), std::max_element(ci.R.begin(), ci.R.end()));
-    long long i_begin = ci.M[0];
-    long long i_end = ci.M[1];
+    long long i_begin = ci.N[0];
+    long long i_end = ci.N[1];
 
     std::array<double, 3>* bodies3 = reinterpret_cast<std::array<double, 3>*>(&bodies[i_begin * 3]);
     std::array<double, 3>* bodies3_end = reinterpret_cast<std::array<double, 3>*>(&bodies[i_end * 3]);
@@ -43,10 +43,10 @@ void buildBinaryTree(Cell* cells, double* bodies, long long nbodies, long long l
     ci.Child[1] = len + 2;
 
     long long loc = i_begin + (i_end - i_begin) / 2;
-    c0.M[0] = c0.N[0] = i_begin;
-    c0.M[1] = c0.N[1] = loc;
-    c1.M[0] = c1.N[0] = loc;
-    c1.M[1] = c1.N[1] = i_end;
+    c0.N[0] = i_begin;
+    c0.N[1] = loc;
+    c1.N[0] = loc;
+    c1.N[1] = i_end;
 
     get_bounds(&bodies[i_begin * 3], loc - i_begin, c0.R.data(), c0.C.data());
     get_bounds(&bodies[loc * 3], i_end - loc, c1.R.data(), c1.C.data());

@@ -14,8 +14,7 @@ public:
 
   void matVecA(const DenseMatrix& X, std::complex<double>* B) const;
   void adjointA(DenseMatrix& B) const;
-  void AijBlock(long long mA, long long nA, long long iA, long long jA, std::complex<double>* A_out, long long stride) const;
-  void AijSetZero(long long mA, long long nA, long long iA, long long jA);
+  void AijExtractBlock(long long mA, long long nA, long long iA, long long jA, std::complex<double>* A_out, long long stride);
   void compress(double epi, std::vector<long long>& recipe, std::vector<std::complex<double>>& basis);
   void copyFromA(const DenseMatrix& A);
 };

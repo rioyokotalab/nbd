@@ -25,11 +25,11 @@ public:
   std::vector<std::complex<double>> A;
   std::vector<std::complex<double>> C;
   
-  void evalLeafA(double epi, DenseMatrix& matA, const long long localM[], const long long localN[], const CSR& Far_local, const H2MatrixComm& comm, long long localNoffset = -1ll);
+  void eval(double epi, DenseMatrix& matA, const long long localM[], const long long localN[], const CSR& rels, const H2MatrixComm& comm, long long localNoffset = -1ll);
 
   void matVecUpwardPass(const std::complex<double>* X_in, std::complex<double>* Z, const H2MatrixComm& comm) const;
-  void matVecHorizontalandDownwardPass(std::complex<double>* Y_out, const std::complex<double>* Z, std::complex<double>* Y, const CSR& Far) const;
-  void matVecLeafHorizontalPass(std::complex<double>* X_io, const std::complex<double>* Z, std::complex<double>* Y, const CSR& Far, const H2MatrixComm& comm) const;
+  void matVecHorizontalandDownwardPass(std::complex<double>* Y_out, const std::complex<double>* Z, std::complex<double>* Y, const CSR& rels, const H2MatrixComm& comm) const;
+  void matVecLeafHorizontalPass(std::complex<double>* X_io, const std::complex<double>* Z, std::complex<double>* Y, const CSR& rels, const H2MatrixComm& comm) const;
 
 };
 

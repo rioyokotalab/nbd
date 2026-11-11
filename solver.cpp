@@ -28,13 +28,12 @@ H2MatrixSolver::H2MatrixSolver(const std::vector<Cell>& cells, const CSR& Far, l
   local_bodies = std::make_pair(cells[gbegin].N[0], cells[gbegin + llen - 1].N[1]);
 }
 
-void H2MatrixSolver::evalMatVecA(DenseMatrix& matA, double epi, Cell cells[], const CSR& Far) {
+void H2MatrixSolver::evalMatVecA(DenseMatrix& matA, double epi, Cell cells[]) {
   long long llen = comm[levels].lenLocal();
   long long gbegin = comm[levels].oGlobal();
-  std::vector<long long> localM(llen), localN(llen);
-  std::transform(&cells[gbegin], &cells[gbegin + llen], localM.begin(), [](const Cell& c) { return c.M[1] - c.M[0]; });
+  std::vector<long long> localM, localN(llen);
   std::transform(&cells[gbegin], &cells[gbegin + llen], localN.begin(), [](const Cell& c) { return c.N[1] - c.N[0]; });
-  A[levels].evalLeafA(epi, matA, &localM[0], &localN[0], Far_local[levels], comm[levels], cells[gbegin].N[0]);
+  A[levels].eval(epi, matA, &localN[0], &localN[0], Far_local[levels], comm[levels], cells[gbegin].N[0]);
 
   for (long long l = levels - 1; l >= 0; l--) {
     do {
@@ -47,7 +46,7 @@ void H2MatrixSolver::evalMatVecA(DenseMatrix& matA, double epi, Cell cells[], co
       localM[i] = A[l + 1].UColPrefixes[cend] - A[l + 1].UColPrefixes[cbegin];
       localN[i] = A[l + 1].VColPrefixes[cend] - A[l + 1].VColPrefixes[cbegin];
     }
-    A[l].evalLeafA(epi, matA, &localM[0], &localN[0], Far_local[l], comm[l]);
+    A[l].eval(epi, matA, &localM[0], &localN[0], Far_local[l], comm[l]);
   }
 }
 
@@ -83,7 +82,7 @@ void H2MatrixSolver::matVecMul(std::complex<double> X[], const long long iwork[]
     A[l].matVecUpwardPass(&cwork[lenX[l + 1] + locV[l]], &cwork[lenX[l]], comm[l]);
 
   for (long long l = 0; l < levels; l++)
-    A[l].matVecHorizontalandDownwardPass(&cwork[lenY[l + 1] + locU[l]], &cwork[lenX[l]], &cwork[lenY[l]], Far_local[l]);
+    A[l].matVecHorizontalandDownwardPass(&cwork[lenY[l + 1] + locU[l]], &cwork[lenX[l]], &cwork[lenY[l]], Far_local[l], comm[l]);
   A[levels].matVecLeafHorizontalPass(X, &cwork[lenX[levels]], &cwork[lenY[levels]], Far_local[levels], comm[levels]);
 }
 
@@ -100,8 +99,6 @@ double H2MatrixSolver::solveRelErr(const std::complex<double> X[], const std::co
 
 void H2MatrixSolver::free_all_comms() {
   for (H2MatrixComm& com : comm) {
-    if (com.MergeComm != MPI_COMM_NULL)
-      MPI_Comm_free(&com.MergeComm);
     if (com.RepComm != MPI_COMM_NULL)
       MPI_Comm_free(&com.RepComm);
     if (com.DupComm != MPI_COMM_NULL)

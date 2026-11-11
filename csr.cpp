@@ -17,7 +17,7 @@ void getList(std::vector<std::pair<long long, long long>>& rels, const Cell ci[]
         getList(rels, ci, k, cj, l);
 }
 
-CSR::CSR(const std::vector<Cell>& ci, const std::vector<Cell>& cj) : N(ci.size()), DiagCol(0) {
+CSR::CSR(const std::vector<Cell>& ci, const std::vector<Cell>& cj) : N(ci.size()) {
   std::vector<std::pair<long long, long long>> LIL;
   getList(LIL, &ci[0], 0, &cj[0], 0);
   std::sort(LIL.begin(), LIL.end());
@@ -25,17 +25,11 @@ CSR::CSR(const std::vector<Cell>& ci, const std::vector<Cell>& cj) : N(ci.size()
   long long len = LIL.size();
   RowIndex.resize(N + 1);
   ColIndex.resize(len);
-  DiagIndex.resize(N);
 
   RowIndex[0] = 0;
   std::transform(LIL.begin(), LIL.end(), ColIndex.begin(), [](const std::pair<long long, long long>& i) { return i.second; });
   std::for_each(LIL.begin(), LIL.end(), [&](const std::pair<long long, long long>& i) { ++RowIndex[i.first + 1]; });
-  std::partial_sum(RowIndex.begin() + 1, RowIndex.end(), RowIndex.begin() + 1);
-
-  for (long long i = 0; i < N; ++i) {
-    long long loc = std::distance(ColIndex.begin(), std::find(ColIndex.begin() + RowIndex[i], ColIndex.begin() + RowIndex[i + 1], i));
-    DiagIndex[i] = loc < RowIndex[i + 1] ? loc : -1;
-  }
+  std::inclusive_scan(RowIndex.begin() + 1, RowIndex.end(), RowIndex.begin() + 1);
 }
 
 CSR::CSR(const CSR& global, long long lbegin, long long lend, const std::vector<std::array<long long, 3>>& boxes) : N(boxes.back()[2]) {
@@ -45,12 +39,9 @@ CSR::CSR(const CSR& global, long long lbegin, long long lend, const std::vector<
       local_map.emplace(box[0] + i, box[2] - box[1] + i);
 
   long long offset = global.RowIndex[lbegin];
-  DiagCol = local_map[lbegin];
   RowIndex.resize(lend - lbegin + 1);
   ColIndex.resize(global.RowIndex[lend] - global.RowIndex[lbegin]);
-  DiagIndex.resize(lend - lbegin);
 
   std::transform(&(global.RowIndex)[lbegin], &(global.RowIndex)[lend + 1], RowIndex.begin(), [=](long long i) { return i - offset; });
   std::transform(&(global.ColIndex)[global.RowIndex[lbegin]], &(global.ColIndex)[global.RowIndex[lend]], ColIndex.begin(), [&](long long j) { return local_map[j]; });
-  std::transform(&(global.DiagIndex)[lbegin], &(global.DiagIndex)[lend], DiagIndex.begin(), [=](long long d) { return 0 <= d ? (d - offset) : -1; });
 }

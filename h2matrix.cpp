@@ -4,15 +4,15 @@
 #include <comm-mpi.hpp>
 #include <csr.hpp>
 #include <dense.hpp>
-#include <lapack_f2c.hpp>
 
 #include <numeric>
 #include <algorithm>
 
+extern "C" void zgemv_(const char*, const int*, const int*, const std::complex<double>*, const std::complex<double>*, const int*, const std::complex<double>*, const int*, const std::complex<double>*, std::complex<double>*, const int*) noexcept;
 inline void agemv(char transA, int M, int N, const std::complex<double>* A, int lda, const std::complex<double>* X, int beta, std::complex<double>* B)
 { int incx = 1; std::complex<double> one(1., 0.), zero(0., 0.); zgemv_(&transA, &M, &N, &one, A, &lda, X, &incx, beta ? &one : &zero, B, &incx); }
 
-void H2Matrix::evalLeafA(double epi, DenseMatrix& matA, const long long localM[], const long long localN[], const CSR& Far_local, const H2MatrixComm& comm, long long localNoffset) {
+void H2Matrix::eval(double epi, DenseMatrix& matA, const long long localM[], const long long localN[], const CSR& rels, const H2MatrixComm& comm, long long localNoffset) {
   long long ibegin = comm.oLocal();
   long long nodes = comm.lenLocal();
   long long xlen = comm.lenNeighbors();
@@ -20,7 +20,7 @@ void H2Matrix::evalLeafA(double epi, DenseMatrix& matA, const long long localM[]
   URowPrefixes.resize(xlen + 1); UColPrefixes.resize(xlen + 1);
   VRowPrefixes.resize(xlen + 1); VColPrefixes.resize(xlen + 1);
   UPrefixes.resize(nodes + 1); VPrefixes.resize(nodes + 1);
-  CPrefixes.resize(Far_local.RowIndex[nodes] + 1);
+  CPrefixes.resize(rels.RowIndex[nodes] + 1);
 
   if (0ll <= localNoffset) {
     APrefixes.resize(nodes + 1);
@@ -31,13 +31,12 @@ void H2Matrix::evalLeafA(double epi, DenseMatrix& matA, const long long localM[]
     long long localMoffset = matA.rowOffsets[matA.prime_rank];
     for (long long i = 0ll; i < nodes; ++i) {
       long long M = localM[i], N = localN[i];
-      matA.AijBlock(M, N, localMoffset, localNoffset, &A[APrefixes[i]], M);
-      matA.AijSetZero(M, N, localMoffset, localNoffset);
+      matA.AijExtractBlock(M, N, localMoffset, localNoffset, &A[APrefixes[i]], M);
       localMoffset += M; localNoffset += N;
     }
   }
 
-  if (Far_local.RowIndex[nodes]) {
+  if (rels.RowIndex[nodes]) {
     long long colOffset = 0ll;
     URowPrefixes[0] = UColPrefixes[0] = VRowPrefixes[0] = VColPrefixes[0] = UPrefixes[0] = VPrefixes[0] = CPrefixes[0] = 0ll;
     std::vector<long long> DimsMLr(&localM[0], &localM[nodes]), DimsNLr(&localN[0], &localN[nodes]);
@@ -67,7 +66,7 @@ void H2Matrix::evalLeafA(double epi, DenseMatrix& matA, const long long localM[]
     }
 
     for (long long i = 0ll; i < nodes; ++i)
-      std::transform(Far_local.ColIndex.begin() + Far_local.RowIndex[i], Far_local.ColIndex.begin() + Far_local.RowIndex[i + 1], CPrefixes.begin() + Far_local.RowIndex[i] + 1,
+      std::transform(rels.ColIndex.begin() + rels.RowIndex[i], rels.ColIndex.begin() + rels.RowIndex[i + 1], CPrefixes.begin() + rels.RowIndex[i] + 1,
         [&](long long col) { return (UColPrefixes[i + ibegin + 1] - UColPrefixes[i + ibegin]) * (VColPrefixes[col + 1] - VColPrefixes[col]); });
     std::inclusive_scan(CPrefixes.begin() + 1, CPrefixes.end(), CPrefixes.begin() + 1);
     C.resize(CPrefixes.back());
@@ -76,12 +75,11 @@ void H2Matrix::evalLeafA(double epi, DenseMatrix& matA, const long long localM[]
     for (long long i = 0; i < nodes; i++) {
       long long mC = UColPrefixes[i + ibegin + 1] - UColPrefixes[i + ibegin];
       long long y = rowOffset + UColPrefixes[ibegin + i];
-      for (long long ij = Far_local.RowIndex[i]; ij < Far_local.RowIndex[i + 1] && 0 < mC; ij++) {
-        long long j = Far_local.ColIndex[ij];
+      for (long long ij = rels.RowIndex[i]; ij < rels.RowIndex[i + 1] && 0 < mC; ij++) {
+        long long j = rels.ColIndex[ij];
         long long nC = VColPrefixes[j + 1] - VColPrefixes[j];
         long long x = colOffset + VColPrefixes[j];
-        matA.AijBlock(mC, nC, y, x, &C[CPrefixes[ij]], mC);
-        matA.AijSetZero(mC, nC, y, x);
+        matA.AijExtractBlock(mC, nC, y, x, &C[CPrefixes[ij]], mC);
       }
     }
   } else {
@@ -122,9 +120,9 @@ void H2Matrix::matVecUpwardPass(const std::complex<double>* X_in, std::complex<d
   comm.neighbor_bcast(Z, VColPrefixes.data());
 }
 
-void H2Matrix::matVecHorizontalandDownwardPass(std::complex<double>* Y_out, const std::complex<double>* Z, std::complex<double>* Y, const CSR& Far) const {
-  long long ibegin = Far.DiagCol;
-  long long nodes = Far.RowIndex.size() - 1;
+void H2Matrix::matVecHorizontalandDownwardPass(std::complex<double>* Y_out, const std::complex<double>* Z, std::complex<double>* Y, const CSR& rels, const H2MatrixComm& comm) const {
+  long long ibegin = comm.oLocal();
+  long long nodes = comm.lenLocal();
   long long lenX = URowPrefixes[ibegin + nodes] - URowPrefixes[ibegin];
   std::fill(Y_out, Y_out + lenX, std::complex<double>(0., 0.));
 
@@ -133,8 +131,8 @@ void H2Matrix::matVecHorizontalandDownwardPass(std::complex<double>* Y_out, cons
     long long K = UColPrefixes[i + ibegin + 1] - UColPrefixes[i + ibegin];
     if (0 < K) {
       std::complex<double>* y = &Y[UColPrefixes[i + ibegin]];
-      for (long long ij = Far.RowIndex[i]; ij < Far.RowIndex[i + 1]; ij++) {
-        long long j = Far.ColIndex[ij];
+      for (long long ij = rels.RowIndex[i]; ij < rels.RowIndex[i + 1]; ij++) {
+        long long j = rels.ColIndex[ij];
         long long N = VColPrefixes[j + 1] - VColPrefixes[j];
 
         const std::complex<double>* z = &Z[VColPrefixes[j]];
@@ -149,7 +147,7 @@ void H2Matrix::matVecHorizontalandDownwardPass(std::complex<double>* Y_out, cons
   }
 }
 
-void H2Matrix::matVecLeafHorizontalPass(std::complex<double>* X_io, const std::complex<double>* Z, std::complex<double>* Y, const CSR& Far, const H2MatrixComm& comm) const {
+void H2Matrix::matVecLeafHorizontalPass(std::complex<double>* X_io, const std::complex<double>* Z, std::complex<double>* Y, const CSR& rels, const H2MatrixComm& comm) const {
   long long ibegin = comm.oLocal();
   long long nodes = comm.lenLocal();
   long long lenX = VRowPrefixes[ibegin + nodes] - VRowPrefixes[ibegin];
@@ -166,8 +164,8 @@ void H2Matrix::matVecLeafHorizontalPass(std::complex<double>* X_io, const std::c
     
     if (0 < K) {
       std::complex<double>* y = &Y[UColPrefixes[i + ibegin]];
-      for (long long ij = Far.RowIndex[i]; ij < Far.RowIndex[i + 1]; ij++) {
-        long long j = Far.ColIndex[ij];
+      for (long long ij = rels.RowIndex[i]; ij < rels.RowIndex[i + 1]; ij++) {
+        long long j = rels.ColIndex[ij];
         long long N = VColPrefixes[j + 1] - VColPrefixes[j];
 
         const std::complex<double>* z = &Z[VColPrefixes[j]];

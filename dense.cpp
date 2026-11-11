@@ -1,9 +1,11 @@
 
 #include <dense.hpp>
-#include <lapack_f2c.hpp>
 #include <algorithm>
 #include <numeric>
 #include <cassert>
+
+extern "C" void zgemv_(const char*, const int*, const int*, const std::complex<double>*, const std::complex<double>*, const int*, const std::complex<double>*, const int*, const std::complex<double>*, std::complex<double>*, const int*) noexcept;
+extern "C" void zgesvd_(const char*, const char*, const int*, const int*, std::complex<double>*, const int*, double*, std::complex<double>*, const int*, std::complex<double>*, const int*, std::complex<double>*, const int*, double*, int*) noexcept;
 
 DenseMatrix::DenseMatrix(long long localM, long long N, MPI_Comm prime, MPI_Comm sub) : N(N), prime_rank(0), prime(prime), sub(sub) {
   if (0ll < N) {
@@ -58,19 +60,21 @@ void DenseMatrix::adjointA(DenseMatrix& B) const {
   assert(B.rowOffsets.back() == N && rowOffsets.back() == B.N);
   assert(prime == B.prime && sub == B.sub);
   if (prime != MPI_COMM_NULL) {
+    std::vector<MPI_Datatype> mpi_types(rowOffsets.size() - 1ull);
+    for (int i = 0; i < int(mpi_types.size()); ++i)
+    { MPI_Type_contiguous(rowOffsets[i + 1] - rowOffsets[i], MPI_C_DOUBLE_COMPLEX, &mpi_types[i]); MPI_Type_commit(&mpi_types[i]); }
+
     long long MA = rowOffsets[prime_rank + 1] - rowOffsets[prime_rank], MB = B.rowOffsets[B.prime_rank + 1] - B.rowOffsets[B.prime_rank];
-    MPI_Datatype typeA, typeB;
-    MPI_Type_contiguous(MA, MPI_C_DOUBLE_COMPLEX, &typeA); MPI_Type_commit(&typeA);
-    MPI_Type_contiguous(MB, MPI_C_DOUBLE_COMPLEX, &typeB); MPI_Type_commit(&typeB);
-    for (int i = 0; i < int(rowOffsets.size()) - 1; ++i) {
+    for (int i = 0; i < int(mpi_types.size()); ++i) {
       long long NA = B.rowOffsets[i + 1] - B.rowOffsets[i], NB = rowOffsets[i + 1] - rowOffsets[i];
-      std::vector<std::complex<double>> AH(MA * NA), BH(MB * NB); AijBlock(MA, NA, rowOffsets[prime_rank], B.rowOffsets[i], &AH[0], MA);
-      MPI_Sendrecv(&AH[0], NA, typeA, i, 0, &BH[0], NB, typeB, i, 0, prime, MPI_STATUS_IGNORE);
+      std::vector<std::complex<double>> AH(MA * NA), BH(MB * NB);
+      const std::complex<double>* src = &A[B.rowOffsets[i]];
+      for (long long y = 0; y < MA; ++y) for (long long x = 0; x < NA; ++x) { AH[y + MA * x] = std::conj(src[y * N + x]); }
+      MPI_Sendrecv(&AH[0], NA, mpi_types[prime_rank], i, 0, &BH[0], MB, mpi_types[i], i, 0, prime, MPI_STATUS_IGNORE);
       std::complex<double>* dst = &(B.A)[rowOffsets[i]];
-      for (long long x = 0; x < MB; ++x) for (long long y = 0; y < NB; ++y)
-      { dst[y + B.N * x] = BH[y + NB * x]; }
+      for (long long x = 0; x < MB; ++x) for (long long y = 0; y < NB; ++y) { dst[y + B.N * x] = BH[y + NB * x]; }
     }
-    MPI_Type_free(&typeA); MPI_Type_free(&typeB);
+    for (MPI_Datatype& type : mpi_types) { MPI_Type_free(&type); }
   }
   if (sub != MPI_COMM_NULL)
   { MPI_Bcast_large(&B.A[0], B.N * (B.rowOffsets[B.prime_rank + 1] - B.rowOffsets[B.prime_rank]), 0, sub); }
@@ -158,24 +162,16 @@ void DenseMatrix::copyFromA(const DenseMatrix& matA) {
   { MPI_Allreduce_large((unsigned char*)&A[0], sizeof(std::complex<double>) * N * (rowOffsets[prime_rank + 1] - rowOffsets[prime_rank]), sub); }
 }
 
-void DenseMatrix::AijBlock(long long mA, long long nA, long long iA, long long jA, std::complex<double>* A_out, long long stride) const {
-  long long row_begin = std::max(rowOffsets[prime_rank], iA), row_end = std::min(rowOffsets[prime_rank + 1], iA + mA);
-  long long col_begin = std::max(0ll, jA), col_end = std::min(N, jA + nA);
-  if (row_begin < row_end && col_begin < col_end) {
-    long long rows = row_end - row_begin, cols = col_end - col_begin;
-    const std::complex<double>* src = &A[(row_begin - rowOffsets[prime_rank]) * N + col_begin];
-    std::complex<double>* dst = &A_out[(row_begin - iA) + (col_begin - jA) * stride];
-    for (long long x = 0; x < cols; ++x) for (long long y = 0; y < rows; ++y)
-    { dst[y + stride * x] = std::conj(src[y * N + x]); }
-  }
-}
-
-void DenseMatrix::AijSetZero(long long mA, long long nA, long long iA, long long jA) {
+void DenseMatrix::AijExtractBlock(long long mA, long long nA, long long iA, long long jA, std::complex<double>* A_out, long long stride) {
   long long row_begin = std::max(rowOffsets[prime_rank], iA), row_end = std::min(rowOffsets[prime_rank + 1], iA + mA);
   long long col_begin = std::max(0ll, jA), col_end = std::min(N, jA + nA);
   if (row_begin < row_end && col_begin < col_end) {
     long long rows = row_end - row_begin, cols = col_end - col_begin;
     std::complex<double>* src = &A[(row_begin - rowOffsets[prime_rank]) * N + col_begin];
-    for (long long y = 0; y < rows; ++y) { std::fill_n(&src[y * N], cols, std::complex<double>(0., 0.)); }
+    std::complex<double>* dst = &A_out[(row_begin - iA) + (col_begin - jA) * stride];
+    for (long long y = 0; y < rows; ++y) {
+      for (long long x = 0; x < cols; ++x) { dst[y + stride * x] = std::conj(src[y * N + x]); }
+      std::fill_n(&src[y * N], cols, std::complex<double>(0., 0.));
+    }
   }
 }

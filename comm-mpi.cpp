@@ -60,9 +60,7 @@ H2MatrixComm::H2MatrixComm(const std::pair<long long, long long> Tree[], std::pa
   }
 
   getNextLevelMapping(&Mapping[0], Tree, mpi_size);
-  long long p_next = std::distance(&Mapping[0], std::find(&Mapping[0], &Mapping[mpi_rank], Mapping[mpi_rank]));
   LocalChild = std::make_pair(Mapping[mpi_rank].first - Tree[pbegin].first, Tree[pend - 1].second - Mapping[mpi_rank].first);
-  MPI_Comm_split(world, (lenp > 1 && mpi_rank == p_next) ? p : MPI_UNDEFINED, mpi_rank, &MergeComm);
   MPI_Comm_split(world, mpi_rank == p ? 1 : MPI_UNDEFINED, mpi_rank, &RepComm);
   MPI_Comm_split(world, lenp > 1 ? p : MPI_UNDEFINED, mpi_rank, &DupComm);
 }
@@ -85,15 +83,6 @@ long long H2MatrixComm::lenNeighbors() const {
 
 std::pair<long long, long long> H2MatrixComm::oLocalChild(const H2MatrixComm& lower) const {
   return std::make_pair(lower.oLocal() - LocalChild.first, lower.oLocal() + LocalChild.second);
-}
-
-void H2MatrixComm::level_merge(void* data, long long len, size_t size) const {
-  record_mpi();
-  if (MergeComm != MPI_COMM_NULL)
-    MPI_Allreduce(MPI_IN_PLACE, data, len * size, MPI_BYTE, MPI_BOR, MergeComm);
-  if (DupComm != MPI_COMM_NULL)
-    MPI_Bcast(data, len * size, MPI_BYTE, 0, DupComm);
-  record_mpi();
 }
 
 void H2MatrixComm::neighbor_bcast(void* data, const long long noffsets[], size_t size) const {
@@ -120,23 +109,6 @@ void H2MatrixComm::neighbor_bcast(void* data, const long long noffsets[], size_t
     MPI_Waitall(requests.size(), &requests[0], MPI_STATUSES_IGNORE);
   if (DupComm != MPI_COMM_NULL)
     MPI_Bcast(data, noffsets[Boxes.back()[2]] * size, MPI_BYTE, 0, DupComm);
-  record_mpi();
-}
-
-void H2MatrixComm::level_merge(long long* data, long long len) const {
-  level_merge(data, len, sizeof(long long));
-}
-
-void H2MatrixComm::level_merge(std::complex<double>* data, long long len) const {
-  level_merge(data, len, sizeof(std::complex<double>));
-}
-
-void H2MatrixComm::level_sum_len(long long* len) const {
-  record_mpi();
-  if (RepComm != MPI_COMM_NULL)
-    MPI_Allreduce(MPI_IN_PLACE, len, 1, MPI_LONG_LONG_INT, MPI_SUM, RepComm);
-  if (DupComm != MPI_COMM_NULL)
-    MPI_Bcast(len, 1, MPI_LONG_LONG_INT, 0, DupComm);
   record_mpi();
 }
 

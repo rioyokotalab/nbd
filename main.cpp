@@ -69,7 +69,7 @@ int main(int argc, char* argv[]) {
 
   MPI_Barrier(world);
   double h2_construct_time = MPI_Wtime(), h2_construct_comm_time;
-  matA.evalMatVecA(denseA, epi, cell.data(), Far);
+  matA.evalMatVecA(denseA, epi, cell.data());
 
   MPI_Barrier(world);
   h2_construct_time = MPI_Wtime() - h2_construct_time;
