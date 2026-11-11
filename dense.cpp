@@ -26,14 +26,45 @@ DenseMatrix::DenseMatrix(long long localM, long long N, MPI_Comm prime, MPI_Comm
   }
 }
 
-static inline void MPI_Bcast_large(std::complex<double>* data, long long len, int root, MPI_Comm comm) {
-  if (0x40000000ll < len) {
-    MPI_Datatype block_type;
-    MPI_Type_contiguous(1 << 30, MPI_C_DOUBLE_COMPLEX, &block_type); MPI_Type_commit(&block_type);
-    int blocks = int(((unsigned long long)len) >> 30) & 0x3fffffff, rem = int(len) & 0x3fffffff;
-    MPI_Bcast(data, blocks, block_type, root, comm); MPI_Type_free(&block_type);
-    if (rem) { MPI_Bcast(&data[((long long)blocks) << 30], rem, MPI_C_DOUBLE_COMPLEX, root, comm); }
-  } else { MPI_Bcast(data, int(len), MPI_C_DOUBLE_COMPLEX, root, comm); }
+constexpr int kBlockDoubles = 1 << 27;  // 1 GiB with 8-byte doubles.
+
+static inline void bcastLarge(double* data, long long count, int root, MPI_Comm comm) {
+  if (kBlockDoubles <= count) {
+    MPI_Datatype block;
+    MPI_Type_contiguous(kBlockDoubles, MPI_DOUBLE, &block); MPI_Type_commit(&block);
+
+    while (kBlockDoubles <= count) {
+      long long blocks = std::min(count / kBlockDoubles, (long long)std::numeric_limits<int>::max());
+      MPI_Bcast(data, int(blocks), block, root, comm); 
+      long long done = blocks * kBlockDoubles;
+      data += done; count -= done;
+    }
+    MPI_Type_free(&block);
+  }
+  if (count != 0) { MPI_Bcast(data, int(count), MPI_DOUBLE, root, comm); }
+}
+
+extern "C" void sumDoubleBlocks(void* in, void* inout, int* len, MPI_Datatype*) {
+  const double* src = (const double*)in; double* dst = (double*)inout;
+  long long n = (long long)(*len) * (long long)kBlockDoubles;
+  for (long long i = 0ll; i < n; ++i) { dst[i] += src[i]; }
+}
+
+static inline void allreduceSumLarge(double* data, long long count, MPI_Comm comm) {
+  if (kBlockDoubles <= count) {
+    MPI_Datatype block; MPI_Op sum;
+    MPI_Type_contiguous(kBlockDoubles, MPI_DOUBLE, &block); MPI_Type_commit(&block);
+    MPI_Op_create(sumDoubleBlocks, 1, &sum);
+
+    while (kBlockDoubles <= count) {
+      const long long blocks = std::min(count / kBlockDoubles, (long long)std::numeric_limits<int>::max());
+      MPI_Allreduce(MPI_IN_PLACE, data, int(blocks), block, sum, comm);
+      const long long done = blocks * kBlockDoubles;
+      data += done; count -= done;
+    }
+    MPI_Op_free(&sum); MPI_Type_free(&block);
+  }
+  if (count != 0) { MPI_Allreduce(MPI_IN_PLACE, data, int(count), MPI_DOUBLE, MPI_SUM, comm); }
 }
 
 void DenseMatrix::matVecA(const DenseMatrix& matA, std::complex<double>* B) const {
@@ -53,7 +84,7 @@ void DenseMatrix::matVecA(const DenseMatrix& matA, std::complex<double>* B) cons
     gemv(M, matA.N, &(matA.A)[0], &X_all[0], B);
   }
   if (sub != MPI_COMM_NULL)
-  { MPI_Bcast_large(B, rowOffsets[prime_rank + 1] - rowOffsets[prime_rank], 0, sub); }
+  { bcastLarge((double*)B, (rowOffsets[prime_rank + 1] - rowOffsets[prime_rank]) * 2ll, 0, sub); }
 }
 
 void DenseMatrix::adjointA(DenseMatrix& B) const {
@@ -77,7 +108,7 @@ void DenseMatrix::adjointA(DenseMatrix& B) const {
     for (MPI_Datatype& type : mpi_types) { MPI_Type_free(&type); }
   }
   if (sub != MPI_COMM_NULL)
-  { MPI_Bcast_large(&B.A[0], B.N * (B.rowOffsets[B.prime_rank + 1] - B.rowOffsets[B.prime_rank]), 0, sub); }
+  { bcastLarge((double*)&B.A[0], B.N * (B.rowOffsets[B.prime_rank + 1] - B.rowOffsets[B.prime_rank]) * 2ll, 0, sub); }
 }
 
 static inline int svd_fit_transform_right(double epi, int M, int N, std::complex<double>* A, std::complex<double>* V) {
@@ -131,35 +162,34 @@ void DenseMatrix::compress(double epi, std::vector<long long>& recipe, std::vect
       MPI_Bcast(comm, 2, MPI_LONG_LONG_INT, 0, sub);
       MPI_Bcast(&rowOffsets[0], int(rowOffsets.size()), MPI_LONG_LONG_INT, 0, sub);
       A.resize(comm[0]); basis.resize(comm[1]);
-      MPI_Bcast_large(&A[0], comm[0], 0, sub);
-      MPI_Bcast_large(&basis[0], comm[1], 0, sub);
+      bcastLarge((double*)&A[0], comm[0] * 2ll, 0, sub);
+      bcastLarge((double*)&basis[0], comm[1] * 2ll, 0, sub);
     }
     A.shrink_to_fit();
   }
 }
 
-static inline void MPI_Allreduce_large(unsigned char* data, long long len, MPI_Comm comm) {
-  if (0x40000000ll < len) {
-    MPI_Datatype block_type;
-    MPI_Type_contiguous(1 << 30, MPI_BYTE, &block_type); MPI_Type_commit(&block_type);
-    int blocks = int(((unsigned long long)len) >> 30) & 0x3fffffff, rem = int(len) & 0x3fffffff;
-    MPI_Allreduce(MPI_IN_PLACE, data, blocks, block_type, MPI_BOR, comm); MPI_Type_free(&block_type);
-    if (rem) { MPI_Allreduce(MPI_IN_PLACE, &data[((long long)blocks) << 30], rem, MPI_BYTE, MPI_BOR, comm); }
-  } else { MPI_Allreduce(MPI_IN_PLACE, data, int(len), MPI_BYTE, MPI_BOR, comm); }
-}
-
 void DenseMatrix::copyFromA(const DenseMatrix& matA) {
   assert(rowOffsets.back() == matA.rowOffsets.back() && N == matA.N);
-  std::fill(A.begin(), A.end(), std::complex<double>(0., 0.));
-  long long row_begin = std::max(rowOffsets[prime_rank], matA.rowOffsets[matA.prime_rank]);
-  long long row_end = std::min(rowOffsets[prime_rank + 1], matA.rowOffsets[matA.prime_rank + 1]);
-  if (row_begin < row_end) {
-    const std::complex<double>* src = &(matA.A)[(row_begin - matA.rowOffsets[matA.prime_rank]) * N];
-    std::complex<double>* dst = &A[(row_begin - rowOffsets[prime_rank]) * N];
-    std::copy(src, &src[(row_end - row_begin) * N], dst);
+  long long dst_begin = rowOffsets[prime_rank], src_begin = matA.rowOffsets[matA.prime_rank];
+  long long lo = std::max(dst_begin, src_begin), hi = std::min(rowOffsets[prime_rank + 1], matA.rowOffsets[matA.prime_rank + 1]);
+
+  bool elected = true; int sub_size = 1;
+  if (sub != MPI_COMM_NULL) { MPI_Comm_size(sub, &sub_size); }
+  if (1 < sub_size) {
+    int sub_rank; MPI_Comm_rank(sub, &sub_rank);
+    std::vector<int> src_groups(sub_size);
+    MPI_Allgather(&matA.prime_rank, 1, MPI_INT, src_groups.data(), 1, MPI_INT, sub);
+    const auto my_pos = src_groups.begin() + sub_rank;
+    elected = std::find(src_groups.begin(), my_pos, matA.prime_rank) == my_pos;
   }
-  if (sub != MPI_COMM_NULL)
-  { MPI_Allreduce_large((unsigned char*)&A[0], sizeof(std::complex<double>) * N * (rowOffsets[prime_rank + 1] - rowOffsets[prime_rank]), sub); }
+
+  bool contributes = elected && lo < hi;
+  if (contributes) {
+    long long src_offset = (lo - src_begin) * N, dst_offset = (lo - dst_begin) * N, count = (hi - lo) * N;
+    std::copy_n(matA.A.data() + src_offset, count, A.data() + dst_offset);
+  } else { std::fill(A.begin(), A.end(), std::complex<double>(0., 0.)); }
+  if (1 < sub_size) { allreduceSumLarge((double*)A.data(), 2ll * A.size(), sub); }
 }
 
 void DenseMatrix::AijExtractBlock(long long mA, long long nA, long long iA, long long jA, std::complex<double>* A_out, long long stride) {
