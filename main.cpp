@@ -209,8 +209,7 @@ int main(int argc, char* argv[]) {
 
   std::mt19937_64 gen;
   std::uniform_real_distribution<double> uniform_dist(0., 1.);
-  std::generate(Xbody.begin(), Xbody.end(), 
-    [&]() { return std::complex<double>(uniform_dist(gen), 0.); });
+  std::generate(Xbody.begin(), Xbody.end(), [&]() { return std::complex<double>(uniform_dist(gen), uniform_dist(gen)); });
 
   /*cell.erase(cell.begin() + 1, cell.begin() + Nleaf - 1);
   cell[0].Child[0] = 1; cell[0].Child[1] = Nleaf + 1;
@@ -222,11 +221,18 @@ int main(int argc, char* argv[]) {
   std::vector<std::complex<double>> X1(lenX, std::complex<double>(0., 0.));
   std::vector<std::complex<double>> X2(lenX, std::complex<double>(0., 0.));
 
-  DenseMatrix denseA(matA.local_bodies.second - matA.local_bodies.first, Nbody, world, MPI_COMM_NULL);
-  gen_matrix(eval, Nbody, lenX, &body[0], &body[3 * matA.local_bodies.first], denseA.A.data());
+  DenseMatrix denseA(lenX, Nbody, world, MPI_COMM_NULL);
+  for (long long i = matA.local_bodies.first; i < matA.local_bodies.second; i += 512ll)
+    for (long long j = 0; j < Nbody; j += 512ll) {
+      long long rows = std::min(matA.local_bodies.second - i, 512ll);
+      long long cols = std::min(Nbody - j, 512ll);
+      std::vector<std::complex<double>> A(rows * cols);
+      gen_matrix(eval, rows, cols, &body[3ll * i], &body[3 * j], &A[0]);
+      denseA.AijSetBlock(rows, cols, i, j, &A[0], rows);
+  }
 
-  DenseMatrix denseX(matA.local_bodies.second - matA.local_bodies.first, 1, world, MPI_COMM_NULL);
-  std::copy(&Xbody[matA.local_bodies.first], &Xbody[matA.local_bodies.second], denseX.A.data());
+  DenseMatrix denseX(lenX, 1, world, MPI_COMM_NULL);
+  denseX.AijSetBlock(lenX, 1, matA.local_bodies.first, 0, &Xbody[matA.local_bodies.first], Nbody);
   double refmatvec_time = MPI_Wtime();
   denseX.matVecA(denseA, &X2[0]);
   refmatvec_time = MPI_Wtime() - refmatvec_time;
