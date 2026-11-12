@@ -82,7 +82,7 @@ public:
   std::pair<long long, long long> local_bodies;
 
   HSS(const std::vector<Cell>& cells, long long levels, MPI_Comm world);
-  void evalMatVecA(DenseMatrix& matA, double epi, Cell cells[]);
+  void evalMatVecA(DenseMatrix& matA, double epi, const Cell cells[]);
   void allocRHSwork(std::vector<long long>& iwork, std::vector<std::complex<double>>& cwork) const;
 
   void matVecMul(std::complex<double> X[]) const;

@@ -10,8 +10,7 @@
 CSR::CSR(const std::vector<Cell>& cells) : N(cells.size()) {
   std::vector<std::pair<long long, long long>> rels;
   auto getList = [&](long long i, long long j, auto&& self) -> void {
-    std::array<double, 3> dc({ cells[i].C[0] - cells[j].C[0], cells[i].C[1] - cells[j].C[1], cells[i].C[2] - cells[j].C[2] });
-    bool admis = 0. < std::inner_product(dc.begin(), dc.end(), dc.begin(), 0.);
+    bool admis = i != j;
     if (admis) { rels.emplace_back(i, j); }
     if (!admis && cells[i].Child[0] >= 0 && cells[j].Child[0] >= 0)
       for (long long k = cells[i].Child[0]; k < cells[i].Child[1]; ++k)
@@ -337,7 +336,7 @@ HSS::HSS(const std::vector<Cell>& cells, long long levels, MPI_Comm world) :
   local_bodies = std::make_pair(cells[gbegin].N[0], cells[gbegin + llen - 1].N[1]);
 }
 
-void HSS::evalMatVecA(DenseMatrix& matA, double epi, Cell cells[]) {
+void HSS::evalMatVecA(DenseMatrix& matA, double epi, const Cell cells[]) {
   long long llen = comm[levels].lenLocal();
   long long gbegin = comm[levels].oGlobal();
   std::vector<long long> localM, localN(llen);
