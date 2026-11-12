@@ -21,7 +21,7 @@ CSR::CSR(const std::vector<Cell>& cells) : N(cells.size()) {
   std::sort(rels.begin(), rels.end());
 
   long long len = rels.size();
-  RowIndex.resize(N + 1);
+  RowIndex.resize(N + 1ll);
   ColIndex.resize(len);
 
   RowIndex[0] = 0;
@@ -44,49 +44,47 @@ CSR::CSR(const CSR& global, long long lbegin, long long lend, const std::vector<
 }
 
 HierarchicalComm::HierarchicalComm(const std::pair<long long, long long> Tree[], std::pair<long long, long long> Mapping[], const long long CRows[], const long long CCols[], MPI_Comm world) {
-  int mpi_rank = 0, mpi_size = 1;
-  MPI_Comm_rank(world, &mpi_rank); MPI_Comm_size(world, &mpi_size);
+  int world_rank = 0, world_size = 1;
+  MPI_Comm_rank(world, &world_rank); MPI_Comm_size(world, &world_size);
 
-  long long pbegin = Mapping[mpi_rank].first;
-  long long pend = Mapping[mpi_rank].second;
-  long long p = std::distance(&Mapping[0], std::find(&Mapping[0], &Mapping[mpi_rank], Mapping[mpi_rank]));
+  long long pbegin = Mapping[world_rank].first, pend = Mapping[world_rank].second;
+  long long p = std::distance(Mapping, std::find(Mapping, &Mapping[world_rank], Mapping[world_rank]));
   long long lenp = std::distance(&Mapping[p], 
-    std::find_if_not(&Mapping[p], &Mapping[mpi_size], [&](std::pair<long long, long long> i) { return i == Mapping[mpi_rank]; }));
+    std::find_if_not(&Mapping[p], &Mapping[world_size], [&](const std::pair<long long, long long>& i) { return i == Mapping[world_rank]; }));
 
   std::map<long long, long long> col_to_mpi_rank;
-  std::for_each(Mapping, &Mapping[mpi_size], [&](std::pair<long long, long long>& i) {
+  std::for_each(Mapping, &Mapping[world_size], [&](std::pair<long long, long long>& i) {
     for (long long col = i.first; col < i.second; ++col) col_to_mpi_rank.emplace(col, (long long)std::distance(Mapping, &i)); });
 
   std::set<long long> cols; cols.insert(col_to_mpi_rank[pbegin]);
   std::for_each(&CCols[CRows[pbegin]], &CCols[CRows[pend]], [&](long long col) { cols.insert(col_to_mpi_rank[col]); });
 
   Proc = std::distance(cols.begin(), std::find(cols.begin(), cols.end(), p));
-  NeighborComms = (p == mpi_rank) ? (cols.size() - 1ll) : 0ll;
+  NeighborComms = (p == world_rank) ? (cols.size() - 1ll) : 0ll;
+  NeighborLoc = -Proc; const std::pair<long long, long long>* curr = &Mapping[world_rank];
+  std::for_each(Mapping, &Mapping[world_rank], [&](const std::pair<long long, long long>& i) { if (*curr != i) { curr = &i; ++NeighborLoc; }});
   Boxes.reserve(cols.size()); long long lenBoxes = 0; for (long long i : cols)
   { long long ibegin = Mapping[i].first, iend = Mapping[i].second; Boxes.emplace_back(std::array<long long, 3>({ ibegin, iend - ibegin, lenBoxes += iend - ibegin })); }
 
+  MPI_Comm_split(world, world_rank == p ? 0 : MPI_UNDEFINED, world_rank, &RepComm);
+  MPI_Comm_split(world, lenp > 1 ? p : MPI_UNDEFINED, world_rank, &DupComm);
+
   long long i = 0;
-  std::vector<std::pair<long long, long long>> MappingNext(mpi_size, std::make_pair(-1, -1));
-  while (i < (long long)mpi_size) {
-    long long lenP = std::distance(&Mapping[i], std::find_if_not(&Mapping[i], &Mapping[mpi_size], 
-      [&](std::pair<long long, long long> a) { return a == Mapping[i]; }));
-    long long pbegin = Mapping[i].first, pend = Mapping[i].second;
-    long long child = Tree[pbegin].first, lenC = Tree[pend - 1].second - child;
+  std::vector<std::pair<long long, long long>> MappingNext(world_size, std::make_pair(-1ll, -1ll));
+  while (i < (long long)world_size) {
+    long long lenP = std::distance(&Mapping[i], std::find_if_not(&Mapping[i], &Mapping[world_size], [&](std::pair<long long, long long> a) { return a == Mapping[i]; }));
+    long long child = Tree[Mapping[i].first].first, lenC = Tree[Mapping[i].second - 1ll].second - child;
     if (child >= 0 && lenC > 0)
       for (long long j = 0; j < lenP; ++j) {
         long long c0 = j * lenC / lenP;
-        long long c1 = (j + 1) * lenC / lenP;
-        c1 = std::max(c1, c0 + 1);
+        long long c1 = (j + 1ll) * lenC / lenP;
+        c1 = std::max(c1, c0 + 1ll);
         MappingNext[i + j] = std::make_pair(child + c0, child + c1);
       }
     i += lenP;
   }
   std::copy(MappingNext.begin(), MappingNext.end(), Mapping);
-
-  LocalChild = Mapping[mpi_rank].first - Tree[pbegin].first;
-  MPI_Comm_split(world, mpi_rank == p ? 1 : MPI_UNDEFINED, mpi_rank, &RepComm);
-  MPI_Comm_split(world, lenp > 1 ? p : MPI_UNDEFINED, mpi_rank, &DupComm);
-  if (RepComm != MPI_COMM_NULL) { int rep_rank; MPI_Comm_rank(RepComm, &rep_rank); NeighborLoc = (long long)rep_rank - Proc; } else { NeighborLoc = -1ll; }
+  LocalChild = Mapping[world_rank].first - Tree[pbegin].first;
 }
 
 long long HierarchicalComm::oLocal() const { return Boxes[Proc][2] - Boxes[Proc][1]; }
@@ -97,7 +95,6 @@ long long HierarchicalComm::oLocalChild(const HierarchicalComm& lower) const { r
 
 void HierarchicalComm::bcastNeighbor(void* data, const long long noffsets[], size_t size) const {
   std::vector<MPI_Request> requests(NeighborComms * 2);
-  record_mpi();
 
   long long send_loc = noffsets[Boxes[Proc][2] - Boxes[Proc][1]];
   long long send_len = (noffsets[Boxes[Proc][2]] - send_loc) * size;
@@ -118,40 +115,10 @@ void HierarchicalComm::bcastNeighbor(void* data, const long long noffsets[], siz
     MPI_Waitall(requests.size(), &requests[0], MPI_STATUSES_IGNORE);
   if (DupComm != MPI_COMM_NULL)
     MPI_Bcast(data, noffsets[Boxes.back()[2]] * size, MPI_BYTE, 0, DupComm);
-  record_mpi();
-}
-
-void HierarchicalComm::bcastNeighbor(long long data[], const long long noffsets[]) const
-{ bcastNeighbor(data, noffsets, sizeof(long long)); }
-
-void HierarchicalComm::bcastNeighbor(std::complex<double> data[], const long long noffsets[]) const
-{ bcastNeighbor(data, noffsets, sizeof(std::complex<double>)); }
-
-std::pair<double, double> timer = std::make_pair(0., 0.);
-
-double HierarchicalComm::get_comm_time(MPI_Comm world) {
-  int mpi_size = 1;
-  MPI_Comm_size(world, &mpi_size);
-  double lapse = timer.first;
-  MPI_Allreduce(MPI_IN_PLACE, &lapse, 1, MPI_DOUBLE, MPI_SUM, world);
-  timer = std::make_pair(0., 0.);
-  return lapse / mpi_size;
-}
-
-void HierarchicalComm::record_mpi() {
-  if (timer.second == 0.)
-    timer.second = MPI_Wtime();
-  else {
-    timer.first = timer.first + (MPI_Wtime() - timer.second);
-    timer.second = 0.;
-  }
 }
 
 void HSSLevel::eval(double epi, DenseMatrix& matA, const long long localM[], const long long localN[], const CSR& rels, const HierarchicalComm& comm, long long localNoffset) {
-  long long ibegin = comm.oLocal();
-  long long nodes = comm.lenLocal();
-  long long xlen = comm.lenNeighbors();
-
+  long long ibegin = comm.oLocal(), nodes = comm.lenLocal(), xlen = comm.lenNeighbors();
   URowPrefixes.resize(xlen + 1); UColPrefixes.resize(xlen + 1);
   VRowPrefixes.resize(xlen + 1); VColPrefixes.resize(xlen + 1);
   UPrefixes.resize(nodes + 1); VPrefixes.resize(nodes + 1);
@@ -188,10 +155,10 @@ void HSSLevel::eval(double epi, DenseMatrix& matA, const long long localM[], con
     std::inclusive_scan(UPrefixes.begin() + 1, UPrefixes.end(), UPrefixes.begin() + 1);
     std::inclusive_scan(VPrefixes.begin() + 1, VPrefixes.end(), VPrefixes.begin() + 1);
 
-    std::vector<long long> seq(xlen + 1); std::vector<std::array<long long, 4>> dims(xlen + 1);
+    std::vector<std::array<long long, 4>> dims(xlen + 1);
     for (long long i = 0ll; i < nodes; ++i) { dims[i + ibegin] = std::array<long long, 4>{ localM[i], localN[i], DimsMLr[i], DimsNLr[i] }; }
-    for (long long i = 0ll; i <= xlen; ++i) { seq[i] = i * 4ll; }
-    comm.bcastNeighbor((long long*)dims.data(), seq.data());
+    std::vector<long long> seq(xlen + 1); std::iota(seq.begin(), seq.end(), 0ll);
+    comm.bcastNeighbor(dims.data(), seq.data(), sizeof(std::array<long long, 4>));
     std::inclusive_scan(dims.begin(), dims.end(), dims.begin(),
       [](const std::array<long long, 4>& a, const std::array<long long, 4>& b) { return std::array<long long, 4>{ a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3] }; });
     
@@ -218,10 +185,10 @@ void HSSLevel::eval(double epi, DenseMatrix& matA, const long long localM[], con
       }
     }
   } else {
-    std::vector<long long> seq(xlen + 1); std::vector<std::array<long long, 2>> dims(xlen + 1);
+    std::vector<std::array<long long, 2>> dims(xlen + 1);
     for (long long i = 0ll; i < nodes; ++i) { dims[i + ibegin] = std::array<long long, 2>{ localM[i], localN[i] }; }
-    for (long long i = 0ll; i <= xlen; ++i) { seq[i] = i * 2ll; }
-    comm.bcastNeighbor((long long*)dims.data(), seq.data());
+    std::vector<long long> seq(xlen + 1); std::iota(seq.begin(), seq.end(), 0ll);
+    comm.bcastNeighbor(dims.data(), seq.data(), sizeof(std::array<long long, 2>));
     std::inclusive_scan(dims.begin(), dims.end(), dims.begin(),
       [](const std::array<long long, 2>& a, const std::array<long long, 2>& b) { return std::array<long long, 2>{ a[0] + b[0], a[1] + b[1] }; });
     
@@ -241,24 +208,22 @@ void HSSLevel::eval(double epi, DenseMatrix& matA, const long long localM[], con
 extern "C" void zgemv_(const char*, const int*, const int*, const std::complex<double>*, const std::complex<double>*, const int*, const std::complex<double>*, const int*, const std::complex<double>*, std::complex<double>*, const int*) noexcept;
 
 void HSSLevel::matVecUpwardPass(const std::complex<double>* X_in, std::complex<double>* Z, const HierarchicalComm& comm) const {
-  long long ibegin = comm.oLocal();
-  long long nodes = comm.lenLocal();
+  long long ibegin = comm.oLocal(), nodes = comm.lenLocal();
   auto gemv = [](int m, int n, const std::complex<double>* a, const std::complex<double>* x, std::complex<double>* b) {
     char transA = 'C'; int incx = 1; std::complex<double> one(1., 0.), zero(0., 0.); zgemv_(&transA, &n, &m, &one, a, &n, x, &incx, &zero, b, &incx);
   };
 
-  for (long long i = 0; i < nodes; ++i) {
+  for (long long i = 0ll; i < nodes; ++i) {
     long long M = VColPrefixes[i + ibegin + 1] - VColPrefixes[i + ibegin];
     long long N = VRowPrefixes[i + ibegin + 1] - VRowPrefixes[i + ibegin];
     if (0 < N)
     { gemv(M, N, &V[VPrefixes[i]], &X_in[VRowPrefixes[i + ibegin] - VRowPrefixes[ibegin]], &Z[VColPrefixes[i + ibegin]]); }
   }
-  comm.bcastNeighbor(Z, VColPrefixes.data());
+  comm.bcastNeighbor(Z, VColPrefixes.data(), sizeof(std::complex<double>));
 }
 
 void HSSLevel::matVecHorizontalandDownwardPass(std::complex<double>* Y_out, const std::complex<double>* Z, std::complex<double>* Y, const CSR& rels, const HierarchicalComm& comm) const {
-  long long ibegin = comm.oLocal();
-  long long nodes = comm.lenLocal();
+  long long ibegin = comm.oLocal(), nodes = comm.lenLocal();
   long long lenX = URowPrefixes[ibegin + nodes] - URowPrefixes[ibegin];
   std::fill(Y_out, Y_out + lenX, std::complex<double>(0., 0.));
   auto gemv_b1 = [](int m, int n, const std::complex<double>* a, const std::complex<double>* x, std::complex<double>* b) {
@@ -268,7 +233,7 @@ void HSSLevel::matVecHorizontalandDownwardPass(std::complex<double>* Y_out, cons
     char transA = 'N'; int incx = 1; std::complex<double> one(1., 0.), zero(0., 0.); zgemv_(&transA, &m, &n, &one, a, &m, x, &incx, &zero, b, &incx);
   };
 
-  for (long long i = 0; i < nodes; ++i) {
+  for (long long i = 0ll; i < nodes; ++i) {
     long long M = URowPrefixes[i + ibegin + 1] - URowPrefixes[i + ibegin];
     long long K = UColPrefixes[i + ibegin + 1] - UColPrefixes[i + ibegin];
     if (0 < K) {
@@ -284,19 +249,18 @@ void HSSLevel::matVecHorizontalandDownwardPass(std::complex<double>* Y_out, cons
 }
 
 void HSSLevel::matVecLeafHorizontalPass(std::complex<double>* X_io, const std::complex<double>* Z, std::complex<double>* Y, const CSR& rels, const HierarchicalComm& comm) const {
-  long long ibegin = comm.oLocal();
-  long long nodes = comm.lenLocal();
+  long long ibegin = comm.oLocal(), nodes = comm.lenLocal();
   long long lenX = VRowPrefixes[ibegin + nodes] - VRowPrefixes[ibegin];
 
   std::vector<std::complex<double>> X(VRowPrefixes.back(), std::complex<double>(0., 0.));
   std::copy(&X_io[0], &X_io[lenX], X.begin() + VRowPrefixes[ibegin]);
-  comm.bcastNeighbor(X.data(), VRowPrefixes.data());
+  comm.bcastNeighbor(X.data(), VRowPrefixes.data(), sizeof(std::complex<double>));
   std::fill(&X_io[0], &X_io[lenX], std::complex<double>(0., 0.));
   auto gemv = [](int m, int n, const std::complex<double>* a, const std::complex<double>* x, std::complex<double>* b) {
     char transA = 'N'; int incx = 1; std::complex<double> one(1., 0.); zgemv_(&transA, &m, &n, &one, a, &m, x, &incx, &one, b, &incx);
   };
 
-  for (long long i = 0; i < nodes; ++i) {
+  for (long long i = 0ll; i < nodes; ++i) {
     long long M = URowPrefixes[i + ibegin + 1] - URowPrefixes[i + ibegin];
     long long K = UColPrefixes[i + ibegin + 1] - UColPrefixes[i + ibegin];
     std::complex<double>* w = &X_io[URowPrefixes[i + ibegin] - URowPrefixes[ibegin]];
@@ -318,38 +282,35 @@ void HSSLevel::matVecLeafHorizontalPass(std::complex<double>* X_io, const std::c
 
 HSS::HSS(const std::vector<Cell>& cells, long long levels, MPI_Comm world) : 
   levels(levels), world(world), A(levels + 1) {
-  int mpi_size = 1;
-  MPI_Comm_size(world, &mpi_size);
+  int world_size = 1; MPI_Comm_size(world, &world_size);
 
-  std::vector<std::pair<long long, long long>> mapping(mpi_size, std::make_pair(0, 1));
+  std::vector<std::pair<long long, long long>> mapping(world_size, std::make_pair(0, 1));
   std::vector<std::pair<long long, long long>> tree(cells.size());
   std::transform(cells.begin(), cells.end(), tree.begin(), [](const Cell& c) { return std::make_pair(c.Child[0], c.Child[1]); });
   
   CSR Far(cells);
-  for (long long i = 0; i <= levels; ++i) {
+  for (long long i = 0ll; i <= levels; ++i) {
     comm.emplace_back(&tree[0], &mapping[0], Far.RowIndex.data(), Far.ColIndex.data(), world);
     Far_local.emplace_back(Far, comm[i].oGlobal(), comm[i].oGlobal() + comm[i].lenLocal(), comm[i].Boxes);
   }
 
-  long long llen = comm[levels].lenLocal();
-  long long gbegin = comm[levels].oGlobal();
+  long long llen = comm[levels].lenLocal(), gbegin = comm[levels].oGlobal();
   local_bodies = std::make_pair(cells[gbegin].N[0], cells[gbegin + llen - 1].N[1]);
 }
 
 void HSS::evalMatVecA(DenseMatrix& matA, double epi, const Cell cells[]) {
-  long long llen = comm[levels].lenLocal();
-  long long gbegin = comm[levels].oGlobal();
+  long long llen = comm[levels].lenLocal(), gbegin = comm[levels].oGlobal();
   std::vector<long long> localM, localN(llen);
   std::transform(&cells[gbegin], &cells[gbegin + llen], localN.begin(), [](const Cell& c) { return c.N[1] - c.N[0]; });
   A[levels].eval(epi, matA, &localN[0], &localN[0], Far_local[levels], comm[levels], cells[gbegin].N[0]);
 
-  for (long long l = levels - 1; l >= 0; --l) {
+  for (long long l = levels - 1ll; l >= 0ll; --l) {
     do {
       DenseMatrix matAl(A[l + 1].UColPrefixes.back(), matA.N, comm[l].RepComm, comm[l].DupComm);
       matAl.copyFromA(matA); matA = std::move(matAl);
     } while(0);
     llen = comm[l].lenLocal(); gbegin = comm[l].oGlobal(); localM.resize(llen); localN.resize(llen);
-    for (long long i = 0; i < llen; ++i) {
+    for (long long i = 0ll; i < llen; ++i) {
       long long cbegin = cells[gbegin + i].Child[0] - cells[gbegin].Child[0], cend = cells[gbegin + i].Child[1] - cells[gbegin].Child[0];
       localM[i] = A[l + 1].UColPrefixes[cend] - A[l + 1].UColPrefixes[cbegin];
       localN[i] = A[l + 1].VColPrefixes[cend] - A[l + 1].VColPrefixes[cbegin];

@@ -238,21 +238,19 @@ int main(int argc, char* argv[]) {
   refmatvec_time = MPI_Wtime() - refmatvec_time;
 
   MPI_Barrier(world);
-  double h2_construct_time = MPI_Wtime(), h2_construct_comm_time;
+  double h2_construct_time = MPI_Wtime();
   matA.evalMatVecA(denseA, epi, cell.data());
 
   MPI_Barrier(world);
   h2_construct_time = MPI_Wtime() - h2_construct_time;
-  h2_construct_comm_time = HierarchicalComm::get_comm_time(world);
 
   std::copy(&Xbody[matA.local_bodies.first], &Xbody[matA.local_bodies.second], &X1[0]);
   MPI_Barrier(world);
-  double matvec_time = MPI_Wtime(), matvec_comm_time;
+  double matvec_time = MPI_Wtime();
   matA.matVecMul(&X1[0]);
 
   MPI_Barrier(world);
   matvec_time = MPI_Wtime() - matvec_time;
-  matvec_comm_time = HierarchicalComm::get_comm_time(world);
   double cerr = matA.solveRelErr(&X1[0], &X2[0]);
 
   if (mpi_rank == 0) {
@@ -260,11 +258,11 @@ int main(int argc, char* argv[]) {
     MPI_Comm_size(world, &mpi_size);
     std::cout << "Active MPI processes: " << mpi_size << std::endl;
     std::cout << "Matrix Order: " << Nbody << " Leaf-size: " << leaf_size << std::endl;
-    std::cout << "HSS-Matvec Target accuracy: " << epi << std::endl;
+    std::cout << " HSS  Matvec Target accuracy: " << epi << std::endl;
     std::cout << "Construct Err: " << cerr << std::endl;
-    std::cout << "HSS-Matrix Construct Time: (tot) " << h2_construct_time << " (comm) " << h2_construct_comm_time << std::endl;
-    std::cout << "HSS-Matvec Time: (tot) " << matvec_time << " (comm) " << matvec_comm_time << std::endl;
-    std::cout << "Dense Matvec Time: (tot) " << refmatvec_time << std::endl;
+    std::cout << " HSS  Construct Time: " << h2_construct_time << std::endl;
+    std::cout << " HSS  Matvec Time: " << matvec_time << std::endl;
+    std::cout << "Dense Matvec Time: " << refmatvec_time << std::endl;
   }
 
   matA.free_all_comms();

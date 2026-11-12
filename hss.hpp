@@ -26,10 +26,8 @@ public:
 
 class HierarchicalComm {
 public:
-  long long Proc, LocalChild;
+  long long Proc, LocalChild, NeighborComms, NeighborLoc;
   std::vector<std::array<long long, 3>> Boxes;
-  
-  long long NeighborComms, NeighborLoc;
   MPI_Comm DupComm, RepComm;
 
   HierarchicalComm(const std::pair<long long, long long> Tree[], std::pair<long long, long long> Mapping[], const long long CRows[], const long long CCols[], MPI_Comm world = MPI_COMM_WORLD);
@@ -41,11 +39,6 @@ public:
   long long oLocalChild(const HierarchicalComm& lower) const;
 
   void bcastNeighbor(void* data, const long long noffsets[], size_t size) const;
-  void bcastNeighbor(long long data[], const long long noffsets[]) const;
-  void bcastNeighbor(std::complex<double> data[], const long long noffsets[]) const;
-
-  static double get_comm_time(MPI_Comm world);
-  static void record_mpi();
 };
 
 class HSSLevel {
