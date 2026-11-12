@@ -71,41 +71,48 @@ void DenseMatrix::matVecA(const DenseMatrix& matA, std::complex<double>* B) cons
   assert(rowOffsets.back() == matA.N && N == 1ll);
   assert(prime == matA.prime && sub == matA.sub);
   if (prime != MPI_COMM_NULL) {
-    std::vector<std::complex<double>> X_all(matA.N);
-    std::vector<int> recvcounts(rowOffsets.size() - 1), displs(rowOffsets.size() - 1);
-    std::transform(rowOffsets.begin() + 1, rowOffsets.end(), rowOffsets.begin(), recvcounts.begin(), [](long long end, long long begin) { return (int)(end - begin); });
-    std::transform(rowOffsets.begin(), std::prev(rowOffsets.end()), displs.begin(), [](long long begin) { return (int)begin; });
+    long long maxN = std::transform_reduce(rowOffsets.begin() + 1, rowOffsets.end(), rowOffsets.begin(), 0ll, [](long long a, long long b) { return std::max(a, b); }, std::minus<long long>());
+    long long prime_size = (long long)rowOffsets.size() - 1ll;
+    std::vector<std::complex<double>> X_all(prime_size * maxN);
+    std::copy(A.begin(), A.end(), &X_all[prime_rank * maxN]);
+    MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, &X_all[0], maxN, MPI_C_DOUBLE_COMPLEX, prime);
 
-    MPI_Allgatherv(&A[0], int(rowOffsets[prime_rank + 1] - rowOffsets[prime_rank]), MPI_C_DOUBLE_COMPLEX, &X_all[0], &recvcounts[0], &displs[0], MPI_C_DOUBLE_COMPLEX, prime);
-    int M = int(matA.rowOffsets[prime_rank + 1] - matA.rowOffsets[prime_rank]);
-    auto gemv = [](int m, int n, const std::complex<double>* a, const std::complex<double>* x, std::complex<double>* b) {
-      char transA = 'C'; int incx = 1; std::complex<double> one(1., 0.), zero(0., 0.); zgemv_(&transA, &n, &m, &one, a, &n, x, &incx, &zero, b, &incx);
-    };
-    gemv(M, matA.N, &(matA.A)[0], &X_all[0], B);
+    const int m = int(matA.rowOffsets[matA.prime_rank + 1] - matA.rowOffsets[matA.prime_rank]), lda = int(matA.N), incx = 1;
+    const char transA = 'C'; const std::complex<double> one(1., 0.), zero(0., 0.);
+    for (long long i = 0; i < prime_size; ++i) {
+      const int n = int(rowOffsets[i + 1] - rowOffsets[i]);
+      zgemv_(&transA, &n, &m, &one, &(matA.A)[rowOffsets[i]], &lda, &X_all[i * maxN], &incx, i == 0ll ? &zero : &one, B, &incx);
+    }
   }
   if (sub != MPI_COMM_NULL)
   { bcastLarge((double*)B, (rowOffsets[prime_rank + 1] - rowOffsets[prime_rank]) * 2ll, 0, sub); }
 }
 
-void DenseMatrix::adjointA(DenseMatrix& B) const {
+void DenseMatrix::adjointA(DenseMatrix& B) {
   assert(B.rowOffsets.back() == N && rowOffsets.back() == B.N);
   assert(prime == B.prime && sub == B.sub);
   if (prime != MPI_COMM_NULL) {
-    std::vector<MPI_Datatype> mpi_types(rowOffsets.size() - 1ull);
-    for (int i = 0; i < int(mpi_types.size()); ++i)
-    { MPI_Type_contiguous(rowOffsets[i + 1] - rowOffsets[i], MPI_C_DOUBLE_COMPLEX, &mpi_types[i]); MPI_Type_commit(&mpi_types[i]); }
+    long long maxM = std::transform_reduce(rowOffsets.begin() + 1, rowOffsets.end(), rowOffsets.begin(), 0ll, [](long long a, long long b) { return std::max(a, b); }, std::minus<long long>());
+    long long maxN = std::transform_reduce(B.rowOffsets.begin() + 1, B.rowOffsets.end(), B.rowOffsets.begin(), 0ll, [](long long a, long long b) { return std::max(a, b); }, std::minus<long long>());
+    long long count = maxM * maxN, prime_size = (long long)rowOffsets.size() - 1ll; B.A.resize(prime_size * count);
 
     long long MA = rowOffsets[prime_rank + 1] - rowOffsets[prime_rank], MB = B.rowOffsets[B.prime_rank + 1] - B.rowOffsets[B.prime_rank];
-    for (int i = 0; i < int(mpi_types.size()); ++i) {
-      long long NA = B.rowOffsets[i + 1] - B.rowOffsets[i], NB = rowOffsets[i + 1] - rowOffsets[i];
-      std::vector<std::complex<double>> AH(MA * NA), BH(MB * NB);
-      const std::complex<double>* src = &A[B.rowOffsets[i]];
-      for (long long y = 0; y < MA; ++y) for (long long x = 0; x < NA; ++x) { AH[y + MA * x] = std::conj(src[y * N + x]); }
-      MPI_Sendrecv(&AH[0], NA, mpi_types[prime_rank], i, 0, &BH[0], MB, mpi_types[i], i, 0, prime, MPI_STATUS_IGNORE);
-      std::complex<double>* dst = &(B.A)[rowOffsets[i]];
-      for (long long x = 0; x < MB; ++x) for (long long y = 0; y < NB; ++y) { dst[y + B.N * x] = BH[y + NB * x]; }
+    for (long long i = 0; i < prime_size; ++i) {
+      long long NA = B.rowOffsets[i + 1] - B.rowOffsets[i];
+      const std::complex<double>* src = &A[B.rowOffsets[i]]; std::complex<double>* dst = &(B.A)[i * count];
+      for (long long y = 0; y < MA; ++y) for (long long x = 0; x < NA; ++x) { dst[y + maxM * x] = std::conj(src[y * N + x]); }
     }
-    for (MPI_Datatype& type : mpi_types) { MPI_Type_free(&type); }
+
+    A.resize(prime_size * count);
+    MPI_Datatype block; MPI_Type_contiguous(maxM, MPI_C_DOUBLE_COMPLEX, &block); MPI_Type_commit(&block);
+    MPI_Alltoall(B.A.data(), maxN, block, A.data(), maxN, block, prime); MPI_Type_free(&block);
+    B.A.resize(MB * B.N);
+
+    for (long long i = 0; i < prime_size; ++i) {
+      long long NB = rowOffsets[i + 1] - rowOffsets[i];
+      const std::complex<double>* src = &A[i * count]; std::complex<double>* dst = &(B.A)[rowOffsets[i]];
+      for (long long x = 0; x < MB; ++x) for (long long y = 0; y < NB; ++y) { dst[y + B.N * x] = src[y + maxM * x]; }
+    }
   }
   if (sub != MPI_COMM_NULL)
   { bcastLarge((double*)&B.A[0], B.N * (B.rowOffsets[B.prime_rank + 1] - B.rowOffsets[B.prime_rank]) * 2ll, 0, sub); }

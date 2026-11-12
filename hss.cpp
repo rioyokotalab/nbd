@@ -73,7 +73,7 @@ HierarchicalComm::HierarchicalComm(const std::pair<long long, long long> Tree[],
     long long pbegin = Mapping[i].first, pend = Mapping[i].second;
     long long child = Tree[pbegin].first, lenC = Tree[pend - 1].second - child;
     if (child >= 0 && lenC > 0)
-      for (long long j = 0; j < lenP; j++) {
+      for (long long j = 0; j < lenP; ++j) {
         long long c0 = j * lenC / lenP;
         long long c1 = (j + 1) * lenC / lenP;
         c1 = std::max(c1, c0 + 1);
@@ -207,10 +207,10 @@ void HSSLevel::eval(double epi, DenseMatrix& matA, const long long localM[], con
     C.resize(CPrefixes.back());
 
     long long rowOffset = matA.rowOffsets[matA.prime_rank] - UColPrefixes[ibegin]; colOffset -= VColPrefixes[ibegin];
-    for (long long i = 0; i < nodes; i++) {
+    for (long long i = 0; i < nodes; ++i) {
       long long mC = UColPrefixes[i + ibegin + 1] - UColPrefixes[i + ibegin];
       long long y = rowOffset + UColPrefixes[ibegin + i];
-      for (long long ij = rels.RowIndex[i]; ij < rels.RowIndex[i + 1] && 0 < mC; ij++) {
+      for (long long ij = rels.RowIndex[i]; ij < rels.RowIndex[i + 1] && 0 < mC; ++ij) {
         long long j = rels.ColIndex[ij];
         long long nC = VColPrefixes[j + 1] - VColPrefixes[j];
         long long x = colOffset + VColPrefixes[j];
@@ -247,7 +247,7 @@ void HSSLevel::matVecUpwardPass(const std::complex<double>* X_in, std::complex<d
     char transA = 'C'; int incx = 1; std::complex<double> one(1., 0.), zero(0., 0.); zgemv_(&transA, &n, &m, &one, a, &n, x, &incx, &zero, b, &incx);
   };
 
-  for (long long i = 0; i < nodes; i++) {
+  for (long long i = 0; i < nodes; ++i) {
     long long M = VColPrefixes[i + ibegin + 1] - VColPrefixes[i + ibegin];
     long long N = VRowPrefixes[i + ibegin + 1] - VRowPrefixes[i + ibegin];
     if (0 < N)
@@ -268,12 +268,12 @@ void HSSLevel::matVecHorizontalandDownwardPass(std::complex<double>* Y_out, cons
     char transA = 'N'; int incx = 1; std::complex<double> one(1., 0.), zero(0., 0.); zgemv_(&transA, &m, &n, &one, a, &m, x, &incx, &zero, b, &incx);
   };
 
-  for (long long i = 0; i < nodes; i++) {
+  for (long long i = 0; i < nodes; ++i) {
     long long M = URowPrefixes[i + ibegin + 1] - URowPrefixes[i + ibegin];
     long long K = UColPrefixes[i + ibegin + 1] - UColPrefixes[i + ibegin];
     if (0 < K) {
       std::complex<double>* y = &Y[UColPrefixes[i + ibegin]];
-      for (long long ij = rels.RowIndex[i]; ij < rels.RowIndex[i + 1]; ij++) {
+      for (long long ij = rels.RowIndex[i]; ij < rels.RowIndex[i + 1]; ++ij) {
         long long j = rels.ColIndex[ij];
         long long N = VColPrefixes[j + 1] - VColPrefixes[j];
         gemv_b1(K, N, &C[CPrefixes[ij]], &Z[VColPrefixes[j]], y);
@@ -296,14 +296,14 @@ void HSSLevel::matVecLeafHorizontalPass(std::complex<double>* X_io, const std::c
     char transA = 'N'; int incx = 1; std::complex<double> one(1., 0.); zgemv_(&transA, &m, &n, &one, a, &m, x, &incx, &one, b, &incx);
   };
 
-  for (long long i = 0; i < nodes; i++) {
+  for (long long i = 0; i < nodes; ++i) {
     long long M = URowPrefixes[i + ibegin + 1] - URowPrefixes[i + ibegin];
     long long K = UColPrefixes[i + ibegin + 1] - UColPrefixes[i + ibegin];
     std::complex<double>* w = &X_io[URowPrefixes[i + ibegin] - URowPrefixes[ibegin]];
     
     if (0 < K) {
       std::complex<double>* y = &Y[UColPrefixes[i + ibegin]];
-      for (long long ij = rels.RowIndex[i]; ij < rels.RowIndex[i + 1]; ij++) {
+      for (long long ij = rels.RowIndex[i]; ij < rels.RowIndex[i + 1]; ++ij) {
         long long j = rels.ColIndex[ij];
         long long N = VColPrefixes[j + 1] - VColPrefixes[j];
         gemv(K, N, &C[CPrefixes[ij]], &Z[VColPrefixes[j]], y);
@@ -343,7 +343,7 @@ void HSS::evalMatVecA(DenseMatrix& matA, double epi, const Cell cells[]) {
   std::transform(&cells[gbegin], &cells[gbegin + llen], localN.begin(), [](const Cell& c) { return c.N[1] - c.N[0]; });
   A[levels].eval(epi, matA, &localN[0], &localN[0], Far_local[levels], comm[levels], cells[gbegin].N[0]);
 
-  for (long long l = levels - 1; l >= 0; l--) {
+  for (long long l = levels - 1; l >= 0; --l) {
     do {
       DenseMatrix matAl(A[l + 1].UColPrefixes.back(), matA.N, comm[l].RepComm, comm[l].DupComm);
       matAl.copyFromA(matA); matA = std::move(matAl);
@@ -362,7 +362,7 @@ void HSS::allocRHSwork(std::vector<long long>& iwork, std::vector<std::complex<d
   iwork.resize((levels * 4ll) + 4ll);
   long long* lenX = &iwork[0], *lenY = &iwork[levels + 2ll], *locV = &iwork[(levels * 2ll) + 4ll], *locU = &iwork[(levels * 3ll) + 4ll];
   lenX[0] = lenY[0] = 0;
-  for (long long l = 0; l < levels; l++) {
+  for (long long l = 0; l < levels; ++l) {
     lenX[l + 1] = 0ll < l ? A[l].VRowPrefixes.back() : 0ll;
     lenY[l + 1] = 0ll < l ? A[l].URowPrefixes.back() : 0ll;
     locV[l] = A[l + 1].VColPrefixes[comm[l].oLocalChild(comm[l + 1])];
@@ -386,10 +386,10 @@ void HSS::matVecMul(std::complex<double> X[], const long long iwork[], std::comp
   const long long* lenX = iwork, *lenY = &iwork[levels + 2ll], *locV = &iwork[(levels * 2ll) + 4ll], *locU = &iwork[(levels * 3ll) + 4ll];
   if (0 < levels)
     A[levels].matVecUpwardPass(X, &cwork[lenX[levels]], comm[levels]);
-  for (long long l = levels - 1; l >= 0; l--)
+  for (long long l = levels - 1; l >= 0; --l)
     A[l].matVecUpwardPass(&cwork[lenX[l + 1] + locV[l]], &cwork[lenX[l]], comm[l]);
 
-  for (long long l = 0; l < levels; l++)
+  for (long long l = 0; l < levels; ++l)
     A[l].matVecHorizontalandDownwardPass(&cwork[lenY[l + 1] + locU[l]], &cwork[lenX[l]], &cwork[lenY[l]], Far_local[l], comm[l]);
   A[levels].matVecLeafHorizontalPass(X, &cwork[lenX[levels]], &cwork[lenY[levels]], Far_local[levels], comm[levels]);
 }
@@ -397,7 +397,7 @@ void HSS::matVecMul(std::complex<double> X[], const long long iwork[], std::comp
 double HSS::solveRelErr(const std::complex<double> X[], const std::complex<double> ref[]) {
   long long lenX = local_bodies.second - local_bodies.first;
   double err[2] = { 0., 0. };
-  for (long long i = 0; i < lenX; i++) {
+  for (long long i = 0; i < lenX; ++i) {
     err[0] += std::norm(X[i] - ref[i]);
     err[1] += std::norm(ref[i]);
   }

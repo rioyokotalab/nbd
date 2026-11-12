@@ -11,11 +11,12 @@ public:
   std::vector<long long> rowOffsets;
   int prime_rank; MPI_Comm prime, sub;
   DenseMatrix(long long localM, long long N, MPI_Comm prime, MPI_Comm sub);
+  void setMatrix(long long mA, long long nA, long long iA, long long jA, const std::complex<double>* A_in, long long stride);
 
-  void matVecA(const DenseMatrix& X, std::complex<double>* B) const;
-  void adjointA(DenseMatrix& B) const;
+  void matVecA(const DenseMatrix& matA, std::complex<double>* B) const;
+  void adjointA(DenseMatrix& B);
   void AijExtractBlock(long long mA, long long nA, long long iA, long long jA, std::complex<double>* A_out, long long stride);
   void compress(double epi, std::vector<long long>& recipe, std::vector<std::complex<double>>& basis);
-  void copyFromA(const DenseMatrix& A);
+  void copyFromA(const DenseMatrix& matA);
 };
 
