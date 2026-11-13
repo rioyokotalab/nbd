@@ -90,8 +90,7 @@ void DenseMatrix::matVecA(const DenseMatrix& matA, std::complex<double>* B) cons
 
 void DenseMatrix::adjointA(long long localN) {
   if (prime != MPI_COMM_NULL) {
-    int mpi_size = 1; MPI_Comm_size(prime, &mpi_size);
-    std::vector<long long> rowOffsetsNew(mpi_size + 1);
+    std::vector<long long> rowOffsetsNew(rowOffsets.size());
     rowOffsetsNew[0] = 0ll; rowOffsetsNew[prime_rank + 1] = localN;
     MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, &rowOffsets[1], 1, MPI_LONG_LONG_INT, prime);
     std::inclusive_scan(rowOffsetsNew.begin() + 1, rowOffsetsNew.end(), rowOffsetsNew.begin() + 1);
@@ -113,14 +112,15 @@ void DenseMatrix::adjointA(long long localN) {
     MPI_Datatype block; MPI_Type_contiguous(maxM, MPI_C_DOUBLE_COMPLEX, &block); MPI_Type_commit(&block);
     MPI_Alltoall(B.data(), maxN, block, A.data(), maxN, block, prime); MPI_Type_free(&block);
     
-    long long BCols = rowOffsets.back(), MB = rowOffsetsNew[prime_rank + 1] - rowOffsetsNew[prime_rank]; B.resize(MB * BCols);
+    long long MB = rowOffsetsNew[prime_rank + 1] - rowOffsetsNew[prime_rank];
+    N = rowOffsets.back(); B.resize(MB * N);
     for (long long i = 0; i < prime_size; ++i) {
       long long NB = rowOffsets[i + 1] - rowOffsets[i];
       const std::complex<double>* src = &A[i * count]; std::complex<double>* dst = &B[rowOffsets[i]];
-      for (long long x = 0; x < MB; ++x) for (long long y = 0; y < NB; ++y) { dst[y + BCols * x] = src[y + maxM * x]; }
+      for (long long x = 0; x < MB; ++x) for (long long y = 0; y < NB; ++y) { dst[y + N * x] = src[y + maxM * x]; }
     }
 
-    N = rowOffsets.back(); rowOffsets = std::move(rowOffsetsNew); A = std::move(B);
+    rowOffsets = std::move(rowOffsetsNew); A = std::move(B);
   }
   if (sub != MPI_COMM_NULL) {
     int comm[2]{ prime_rank, int(rowOffsets.size()) };
