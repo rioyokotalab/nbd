@@ -12,12 +12,12 @@ find_package(LAPACK REQUIRED)
 find_package(MPI REQUIRED)
 find_package(CUDAToolkit REQUIRED)
 
-add_executable(complex.app dense.cpp hss.cpp main.cpp)
+add_executable(main dense.cpp hss.cpp main.cpp)
 
-target_link_libraries(complex.app BLAS::BLAS LAPACK::LAPACK MPI::MPI_CXX)
-target_include_directories(complex.app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(main BLAS::BLAS LAPACK::LAPACK MPI::MPI_CXX)
+target_include_directories(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  target_compile_options(complex.app PRIVATE "-Wall" "-Wextra" "-fexceptions" "$<$<CONFIG:DEBUG>:-O0;-g3;-ggdb>" "$<$<CONFIG:RELEASE>:-O3>")
+  target_compile_options(main PRIVATE "-Wall" "-Wextra" "-fexceptions" "$<$<CONFIG:DEBUG>:-O0;-g3;-ggdb>" "$<$<CONFIG:RELEASE>:-O3>")
 endif()
 

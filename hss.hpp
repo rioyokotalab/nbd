@@ -26,11 +26,11 @@ public:
 
 class HierarchicalComm {
 public:
-  long long Proc, LocalChild, NeighborComms, NeighborLoc;
+  long long Proc, NeighborComms, NeighborLoc, LocalChild;
   std::vector<std::array<long long, 3>> Boxes;
   MPI_Comm DupComm, RepComm;
 
-  HierarchicalComm(const std::pair<long long, long long> Tree[], std::pair<long long, long long> Mapping[], const long long CRows[], const long long CCols[], MPI_Comm world = MPI_COMM_WORLD);
+  HierarchicalComm(const std::pair<long long, long long> Tree[], std::pair<long long, long long> Mapping[], const long long CRows[], const long long CCols[], MPI_Comm world);
   
   long long oLocal() const;
   long long oGlobal() const;
@@ -74,7 +74,7 @@ public:
   std::vector<HSSLevel> A;
   std::pair<long long, long long> local_bodies;
 
-  HSS(const std::vector<Cell>& cells, long long levels, MPI_Comm world);
+  HSS(const std::vector<Cell>& cells, long long levels, MPI_Comm world = MPI_COMM_WORLD);
   void evalMatVecA(DenseMatrix& matA, double epi, const Cell cells[]);
   void allocRHSwork(std::vector<long long>& iwork, std::vector<std::complex<double>>& cwork) const;
 

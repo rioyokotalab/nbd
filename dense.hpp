@@ -7,14 +7,15 @@
 class DenseMatrix {
 private:
   std::vector<std::complex<double>> A;
+  MPI_Comm prime, sub;
 
 public:
   std::vector<long long> rowOffsets;
-  long long N; int prime_rank; MPI_Comm prime, sub;
+  long long N; int prime_rank;
   DenseMatrix(long long localM, long long N, MPI_Comm prime, MPI_Comm sub);
 
   void matVecA(const DenseMatrix& matA, std::complex<double>* B) const;
-  void adjointA(DenseMatrix& B);
+  void adjointA(long long localN);
   void compress(double epi, std::vector<long long>& recipe, std::vector<std::complex<double>>& basis);
   void copyFromA(const DenseMatrix& matA);
 

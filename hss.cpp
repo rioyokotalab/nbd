@@ -127,7 +127,7 @@ void HSSLevel::eval(double epi, DenseMatrix& matA, const long long localM[], con
   if (0ll <= localNoffset) {
     APrefixes.resize(nodes + 1);
     std::transform(localM, &localM[nodes], localN, APrefixes.begin() + 1, std::multiplies<long long>());
-    std::partial_sum(APrefixes.begin() + 1, APrefixes.end(), APrefixes.begin() + 1);
+    std::inclusive_scan(APrefixes.begin() + 1, APrefixes.end(), APrefixes.begin() + 1);
     APrefixes[0] = 0ll; A.resize(APrefixes.back());
 
     long long localMoffset = matA.rowOffsets[matA.prime_rank];
@@ -139,16 +139,13 @@ void HSSLevel::eval(double epi, DenseMatrix& matA, const long long localM[], con
   }
 
   if (rels.RowIndex[nodes]) {
-    long long colOffset = 0ll;
     URowPrefixes[0] = UColPrefixes[0] = VRowPrefixes[0] = VColPrefixes[0] = UPrefixes[0] = VPrefixes[0] = CPrefixes[0] = 0ll;
     std::vector<long long> DimsMLr(&localM[0], &localM[nodes]), DimsNLr(&localN[0], &localN[nodes]);
     matA.compress(epi, DimsMLr, U);
-    do {
-      DenseMatrix matAH(std::reduce(&localN[0], &localN[nodes]), matA.rowOffsets.back(), matA.prime, matA.sub);
-      matA.adjointA(matAH); matAH.compress(epi, DimsNLr, V);
-      matA = DenseMatrix(std::reduce(DimsMLr.begin(), DimsMLr.end()), matAH.rowOffsets.back(), matAH.prime, matAH.sub);
-      matAH.adjointA(matA); colOffset = matAH.rowOffsets[matAH.prime_rank];
-    } while(0);
+    matA.adjointA(std::reduce(DimsNLr.begin(), DimsNLr.end()));
+    matA.compress(epi, DimsNLr, V);
+    long long colOffset = matA.rowOffsets[matA.prime_rank];
+    matA.adjointA(std::reduce(DimsMLr.begin(), DimsMLr.end()));
 
     std::transform(&localM[0], &localM[nodes], &DimsMLr[0], UPrefixes.begin() + 1, std::multiplies<long long>());
     std::transform(&localN[0], &localN[nodes], &DimsNLr[0], VPrefixes.begin() + 1, std::multiplies<long long>());
@@ -225,7 +222,7 @@ void HSSLevel::matVecUpwardPass(const std::complex<double>* X_in, std::complex<d
 void HSSLevel::matVecHorizontalandDownwardPass(std::complex<double>* Y_out, const std::complex<double>* Z, std::complex<double>* Y, const CSR& rels, const HierarchicalComm& comm) const {
   long long ibegin = comm.oLocal(), nodes = comm.lenLocal();
   long long lenX = URowPrefixes[ibegin + nodes] - URowPrefixes[ibegin];
-  std::fill(Y_out, Y_out + lenX, std::complex<double>(0., 0.));
+  std::fill(Y_out, &Y_out[lenX], std::complex<double>(0., 0.));
   auto gemv_b1 = [](int m, int n, const std::complex<double>* a, const std::complex<double>* x, std::complex<double>* b) {
     char transA = 'N'; int incx = 1; std::complex<double> one(1., 0.); zgemv_(&transA, &m, &n, &one, a, &m, x, &incx, &one, b, &incx);
   };
@@ -332,7 +329,7 @@ void HSS::allocRHSwork(std::vector<long long>& iwork, std::vector<std::complex<d
 
   lenX[levels + 1] = A[levels].VRowPrefixes.back();
   lenY[levels + 1] = A[levels].URowPrefixes.back();
-  std::partial_sum(&lenX[1], locV, &lenX[1]);
+  std::inclusive_scan(&lenX[1], locV, &lenX[1]);
   cwork.resize(lenY[levels + 1]);
 }
 
