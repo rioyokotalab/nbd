@@ -214,18 +214,8 @@ void DenseMatrix::redistribute(long long localM, MPI_Comm primeNew, MPI_Comm sub
 
   long long src_begin = rowOffsets[prime_rank], dst_begin = rowOffsetsNew[primeRankNew];
   long long lo = std::max(dst_begin, src_begin), hi = std::min(rowOffsets[prime_rank + 1], rowOffsetsNew[primeRankNew + 1]);
-  bool elected = true;
-  if (subNew != MPI_COMM_NULL) {
-    int sub_rank, sub_size; MPI_Comm_rank(subNew, &sub_rank); MPI_Comm_size(subNew, &sub_size);
-    std::vector<int> src_groups(sub_size); src_groups[sub_rank] = prime_rank;
-    MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, src_groups.data(), 1, MPI_INT, subNew);
-    std::vector<int>::iterator my_pos = src_groups.begin() + sub_rank;
-    elected = std::find(src_groups.begin(), my_pos, prime_rank) == my_pos;
-  }
-
   std::vector<std::complex<double>> B(localM * N, std::complex<double>(0., 0.));
-  bool contributes = elected && lo < hi;
-  if (contributes) {
+  if (prime != MPI_COMM_NULL && lo < hi) {
     long long src_offset = (lo - src_begin) * N, dst_offset = (lo - dst_begin) * N, count = (hi - lo) * N;
     std::copy_n(&A[src_offset], count, &B[dst_offset]);
   }
