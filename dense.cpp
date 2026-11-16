@@ -92,7 +92,7 @@ void DenseMatrix::adjointA(long long localN) {
   if (prime != MPI_COMM_NULL) {
     std::vector<long long> rowOffsetsNew(rowOffsets.size());
     rowOffsetsNew[0] = 0ll; rowOffsetsNew[prime_rank + 1] = localN;
-    MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, &rowOffsets[1], 1, MPI_LONG_LONG_INT, prime);
+    MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, &rowOffsetsNew[1], 1, MPI_LONG_LONG_INT, prime);
     std::inclusive_scan(rowOffsetsNew.begin() + 1, rowOffsetsNew.end(), rowOffsetsNew.begin() + 1);
     assert(rowOffsetsNew.back() == N);
 
@@ -190,26 +190,48 @@ void DenseMatrix::compress(double epi, std::vector<long long>& recipe, std::vect
   }
 }
 
-void DenseMatrix::copyFromA(const DenseMatrix& matA) {
-  assert(rowOffsets.back() == matA.rowOffsets.back() && N == matA.N);
-  long long dst_begin = rowOffsets[prime_rank], src_begin = matA.rowOffsets[matA.prime_rank];
-  long long lo = std::max(dst_begin, src_begin), hi = std::min(rowOffsets[prime_rank + 1], matA.rowOffsets[matA.prime_rank + 1]);
-
-  bool elected = true;
-  if (sub != MPI_COMM_NULL) {
-    int sub_rank, sub_size; MPI_Comm_rank(sub, &sub_rank); MPI_Comm_size(sub, &sub_size);
-    std::vector<int> src_groups(sub_size); src_groups[sub_rank] = matA.prime_rank;
-    MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, src_groups.data(), 1, MPI_INT, sub);
-    std::vector<int>::iterator my_pos = src_groups.begin() + sub_rank;
-    elected = std::find(src_groups.begin(), my_pos, matA.prime_rank) == my_pos;
+void DenseMatrix::redistribute(long long localM, MPI_Comm primeNew, MPI_Comm subNew) {
+  std::vector<long long> rowOffsetsNew; int primeRankNew = 0;
+  if (primeNew != MPI_COMM_NULL) {
+    int mpi_size = 1;
+    MPI_Comm_rank(primeNew, &primeRankNew); MPI_Comm_size(primeNew, &mpi_size);
+    rowOffsetsNew.resize(mpi_size + 1); rowOffsetsNew[0] = 0ll; rowOffsetsNew[primeRankNew + 1] = localM;
+    MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, &rowOffsetsNew[1], 1, MPI_LONG_LONG_INT, primeNew);
+    std::inclusive_scan(rowOffsetsNew.begin() + 1, rowOffsetsNew.end(), rowOffsetsNew.begin() + 1);
+  }
+  if (subNew != MPI_COMM_NULL) {
+    int comm[2]{ primeRankNew, int(rowOffsetsNew.size()) - 1 };
+    MPI_Bcast(comm, 2, MPI_INT, 0, subNew);
+    primeRankNew = comm[0]; rowOffsetsNew.resize(comm[1] + 1); rowOffsetsNew[0] = 0ll;
+    MPI_Bcast(&rowOffsetsNew[1], comm[1], MPI_LONG_LONG_INT, 0, subNew);
+  }
+  assert(rowOffsets.back() == rowOffsetsNew.back());
+  if (prime_rank == primeRankNew && rowOffsets.size() == rowOffsetsNew.size()) {
+    bool agrees = true; std::vector<long long>::const_iterator i0 = rowOffsets.begin(), i1 = rowOffsetsNew.begin();
+    while(agrees && i0 != rowOffsets.end() && i1 != rowOffsetsNew.end()) { agrees = *i0 == *i1; ++i0; ++i1; }
+    if (agrees) { prime = primeNew; sub = subNew; return; }
   }
 
+  long long src_begin = rowOffsets[prime_rank], dst_begin = rowOffsetsNew[primeRankNew];
+  long long lo = std::max(dst_begin, src_begin), hi = std::min(rowOffsets[prime_rank + 1], rowOffsetsNew[primeRankNew + 1]);
+  bool elected = true;
+  if (subNew != MPI_COMM_NULL) {
+    int sub_rank, sub_size; MPI_Comm_rank(subNew, &sub_rank); MPI_Comm_size(subNew, &sub_size);
+    std::vector<int> src_groups(sub_size); src_groups[sub_rank] = prime_rank;
+    MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, src_groups.data(), 1, MPI_INT, subNew);
+    std::vector<int>::iterator my_pos = src_groups.begin() + sub_rank;
+    elected = std::find(src_groups.begin(), my_pos, prime_rank) == my_pos;
+  }
+
+  std::vector<std::complex<double>> B(localM * N, std::complex<double>(0., 0.));
   bool contributes = elected && lo < hi;
   if (contributes) {
     long long src_offset = (lo - src_begin) * N, dst_offset = (lo - dst_begin) * N, count = (hi - lo) * N;
-    std::copy_n(&matA.A[src_offset], count, &A[dst_offset]);
-  } else { std::fill(A.begin(), A.end(), std::complex<double>(0., 0.)); }
-  if (sub != MPI_COMM_NULL) { allreduceSumLarge((int*)A.data(), A.size() * 4ll, sub); }
+    std::copy_n(&A[src_offset], count, &B[dst_offset]);
+  }
+  if (subNew != MPI_COMM_NULL) { allreduceSumLarge((int*)B.data(), B.size() * 4ll, subNew); }
+  A = std::move(B); rowOffsets = std::move(rowOffsetsNew); prime_rank = primeRankNew;
+  prime = primeNew; sub = subNew;
 }
 
 void DenseMatrix::AijSetBlock(long long mA, long long nA, long long iA, long long jA, const std::complex<double>* A_in, long long stride) {

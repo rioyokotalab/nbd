@@ -302,10 +302,7 @@ void HSS::evalMatVecA(DenseMatrix& matA, double epi, const Cell cells[]) {
   A[levels].eval(epi, matA, &localN[0], &localN[0], Far_local[levels], comm[levels], cells[gbegin].N[0]);
 
   for (long long l = levels - 1ll; l >= 0ll; --l) {
-    do {
-      DenseMatrix matAl(A[l + 1].UColPrefixes.back(), matA.N, comm[l].RepComm, comm[l].DupComm);
-      matAl.copyFromA(matA); matA = std::move(matAl);
-    } while(0);
+    matA.redistribute(A[l + 1].UColPrefixes.back(), comm[l].RepComm, comm[l].DupComm);
     llen = comm[l].lenLocal(); gbegin = comm[l].oGlobal(); localM.resize(llen); localN.resize(llen);
     for (long long i = 0ll; i < llen; ++i) {
       long long cbegin = cells[gbegin + i].Child[0] - cells[gbegin].Child[0], cend = cells[gbegin + i].Child[1] - cells[gbegin].Child[0];
